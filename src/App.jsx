@@ -31,6 +31,9 @@ export default function AcchaChai() {
   const [stalls, setStalls] = useState([]);
   const [userLocation, setUserLocation] = useState(null);
   const [activeTab, setActiveTab] = useState('home');
+  const [isPinningLocation, setIsPinningLocation] = useState(false);
+  const [pinnedLocation, setPinnedLocation] = useState(null);
+  const mapRef = useRef(null);
 
   // Listen for auth state changes
   useEffect(() => {
@@ -203,7 +206,7 @@ useEffect(() => {
 
         {/* Add Tab */}
         <button
-          onClick={() => setShowAddStall(true)}
+          onClick={() => setIsPinningLocation(true)}
           className={`flex flex-col items-center justify-center py-3 transition ${
             showAddStall ? 'text-amber-600' : 'text-gray-500'
           }`}
@@ -227,16 +230,35 @@ useEffect(() => {
       </div>
      </nav>
 
+      {/* Pin Placement Modal */}
+      {isPinningLocation && userLocation && (
+        <PinPlacementScreen
+          userLocation={userLocation}
+          onConfirm={(coords) => {
+            setPinnedLocation(coords);
+            setIsPinningLocation(false);
+            setShowAddStall(true);
+          }}
+          onCancel={() => {
+            setIsPinningLocation(false);
+          }}
+        />
+      )}
+
       {/* Add Stall Modal */}
       {showAddStall && (
         <AddStallModal
-          userLocation={userLocation}
-          onClose={() => setShowAddStall(false)}
+          userLocation={pinnedLocation || userLocation}
+          onClose={() => {
+            setShowAddStall(false);
+            setPinnedLocation(null);
+          }}
           onSubmit={async (newStall) => {
             try {
               const savedStall = await saveStallToDb(newStall);
               setStalls([savedStall, ...stalls]);
               setShowAddStall(false);
+              setPinnedLocation(null);
               setActiveTab('home'); // Go back to home after posting
               alert('Chai stall added successfully! ☕');
             } catch (error) {
@@ -443,12 +465,100 @@ function StallDetail({ stall, onClose }) {
   );
 }
 
+// Pin Placement Screen
+function PinPlacementScreen({ onConfirm, onCancel, userLocation }) {
+  const [map, setMap] = useState(null);
+  const [centerCoords, setCenterCoords] = useState(userLocation);
+
+  useEffect(() => {
+    // Initialize map
+    if (window.google && userLocation) {
+      const googleMap = new window.google.maps.Map(document.getElementById('pin-map'), {
+        center: userLocation,
+        zoom: 18,
+        disableDefaultUI: true,
+        zoomControl: true,
+        gestureHandling: 'greedy',
+        styles: [
+          {
+            featureType: 'poi',
+            elementType: 'labels',
+            stylers: [{ visibility: 'on' }]
+          }
+        ]
+      });
+
+      setMap(googleMap);
+
+      // Update coordinates as map moves
+      googleMap.addListener('center_changed', () => {
+        const center = googleMap.getCenter();
+        setCenterCoords({
+          lat: center.lat(),
+          lng: center.lng()
+        });
+      });
+    }
+  }, [userLocation]);
+
+  return (
+    <div className="fixed inset-0 z-50 bg-white">
+      {/* Header */}
+      <div className="absolute top-0 left-0 right-0 z-10 bg-white shadow-md p-4 safe-area-top">
+        <div className="flex items-center justify-between">
+          <button
+            onClick={onCancel}
+            className="text-gray-600 font-medium"
+          >
+            Cancel
+          </button>
+          <h2 className="text-lg font-bold text-gray-800">Pin Location</h2>
+          <div className="w-16"></div>
+        </div>
+        <p className="text-sm text-gray-600 mt-2 text-center">
+          Move the map to position the pin exactly on the stall
+        </p>
+      </div>
+
+      {/* Map Container */}
+      <div id="pin-map" className="w-full h-full"></div>
+
+      {/* Fixed Pin in Center */}
+      <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-10 pointer-events-none">
+        <MapPin 
+          size={48} 
+          className="text-red-600 drop-shadow-lg"
+          fill="currentColor"
+        />
+      </div>
+
+      {/* Confirm Button */}
+      <div className="absolute bottom-0 left-0 right-0 z-10 px-6 pb-8 safe-area-bottom bg-white">
+        <button
+          onClick={() => centerCoords && onConfirm(centerCoords)}
+          disabled={!centerCoords}
+          className="w-full bg-amber-600 text-white py-4 rounded-xl font-bold text-lg shadow-lg hover:bg-amber-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition"
+        >
+          Confirm Location
+        </button>
+        
+        {centerCoords && (
+          <p className="text-xs text-gray-500 text-center mt-2">
+            📍 {centerCoords.lat.toFixed(6)}, {centerCoords.lng.toFixed(6)}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // Add Stall Modal
 function AddStallModal({ userLocation, onClose, onSubmit }) {
   const [step, setStep] = useState('camera');
   const [photo, setPhoto] = useState(null);
   const [rating, setRating] = useState('');
   const [description, setDescription] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handlePhotoCapture = (e) => {
     const file = e.target.files[0];
@@ -462,16 +572,47 @@ function AddStallModal({ userLocation, onClose, onSubmit }) {
     }
   };
 
-  const handleSubmit = () => {
-    onSubmit({
-      photo,
-      rating,
-      description,
-      location: userLocation,
-      addedBy: auth.currentUser?.uid || 'anonymous',
-      ratings: 0,
-      name: 'New Chai Stall'
-    });
+  const handleSubmit = async () => {
+    console.log('Submit clicked!');
+    console.log('Photo:', photo ? 'Yes' : 'No');
+    console.log('Rating:', rating);
+    console.log('Location:', userLocation);
+    
+    if (!photo) {
+      alert('Please add a photo!');
+      return;
+    }
+    
+    if (!rating) {
+      alert('Please select a rating!');
+      return;
+    }
+    
+    if (!userLocation) {
+      alert('Location not available. Please try again.');
+      return;
+    }
+    
+    console.log('All validations passed, calling onSubmit...');
+    
+    setIsSubmitting(true);
+    
+    try {
+      await onSubmit({
+        photo,
+        rating,
+        description,
+        location: userLocation,
+        addedBy: auth.currentUser?.uid || 'anonymous',
+        ratings: 0,
+        name: 'New Chai Stall'
+      });
+      console.log('Submit successful!');
+    } catch (error) {
+      console.error('Submit error:', error);
+      alert('Error posting stall: ' + error.message);
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -597,10 +738,10 @@ function AddStallModal({ userLocation, onClose, onSubmit }) {
               <button
                 type="button"
                 onClick={handleSubmit}
-                disabled={!rating}
+                disabled={!rating || isSubmitting}
                 className="w-full bg-amber-600 text-white py-4 rounded-lg font-semibold active:bg-amber-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Post Chai Stall
+                {isSubmitting ? 'Posting...' : 'Post Chai Stall'}
               </button>
             </div>
           )}
