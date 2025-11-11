@@ -1,16 +1,52 @@
-# React + Vite
+# ☕ Accha Chai
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Community-driven app to discover the best chai stalls in India.
 
-Currently, two official plugins are available:
+## 🚀 Live Demo
+**https://accha-chai.web.app**
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## ✨ Features (Current - Beta v0.1)
+- 🗺️ Google Maps integration with real-time location
+- 🔐 Google Sign-In authentication
+- 📸 Camera & gallery photo upload
+- ⭐ Rating system (Accha/Thik-Thak/Nahi)
+- 💾 Cloud database (Firebase Firestore)
+- 📱 Mobile-responsive PWA (installable)
+- 🧭 My Location button
 
-## React Compiler
+## 🚧 Coming Soon
+- 🔍 Explore feed (recent discoveries)
+- 👤 User profiles
+- 🔎 Search & filter stalls
+- 🖼️ Photo optimization (Cloudinary)
+- 💬 Rating others' stalls
+- 🏆 Chai points & badges
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## 🛠️ Tech Stack
+- React + Vite
+- Firebase (Auth, Firestore, Hosting)
+- Google Maps API
+- Tailwind CSS
+- PWA (Progressive Web App)
 
-## Expanding the ESLint configuration
+## 📱 Installation
+**As PWA:**
+- Android: Open in Chrome → Menu → "Install app"
+- iOS: Open in Safari → Share → "Add to Home Screen"
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+**Local Development:**
+```bash
+npm install
+npm run dev
+```
+
+## 🎯 Vision
+For the community, by the community. No ads, no premium features, just authentic chai discovery.
+
+Built with ❤️ and ☕
+
+---
+
+**Status:** Beta Testing (v0.1)  
+**Started:** [Your start date]  
+**Current Phase:** Friend/Family Testing
