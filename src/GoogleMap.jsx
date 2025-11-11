@@ -22,11 +22,15 @@ const getMarkerColor = (rating) => {
 
 export default function Map({ stalls, userLocation, onStallClick }) {
   const mapRef = useRef(null);
+  const locationButtonRef = useRef(null);
 
-  // Add custom control button
-  useEffect(() => {
-    if (mapRef.current && userLocation && window.google) {
-      const map = mapRef.current;
+  // Add custom control button when map is ready
+  const handleMapLoad = (map) => {
+    mapRef.current = map;
+
+    // Wait for map to be fully idle before adding button
+    window.google.maps.event.addListenerOnce(map, 'idle', () => {
+      if (locationButtonRef.current) return; // Prevent duplicates
 
       // Create the button
       const locationButton = document.createElement('button');
@@ -74,10 +78,11 @@ export default function Map({ stalls, userLocation, onStallClick }) {
         }
       });
 
-      // Add to map - position near the pan controls
+      // Add to map
       map.controls[window.google.maps.ControlPosition.RIGHT_BOTTOM].push(locationButton);
-    }
-  }, [mapRef.current, userLocation]);
+      locationButtonRef.current = locationButton;
+    });
+  };
 
   // Loading state
   if (!userLocation) {
@@ -97,9 +102,7 @@ export default function Map({ stalls, userLocation, onStallClick }) {
         mapContainerStyle={mapContainerStyle}
         center={userLocation}
         zoom={14}
-        onLoad={(map) => {
-          mapRef.current = map;
-        }}
+        onLoad={handleMapLoad}
         options={{
           streetViewControl: false,
           mapTypeControl: false,
