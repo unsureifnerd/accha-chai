@@ -8,6 +8,15 @@
   box-sizing: border-box;
 }
 
+/* Use dynamic viewport height */
+html, body, #root {
+  height: 100dvh;
+  height: 100vh; /* Fallback */
+  width: 100%;
+  overflow: hidden;
+  position: fixed;
+}
+
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
     'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',

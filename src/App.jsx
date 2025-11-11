@@ -1,146 +1,216 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Camera, MapPin, Navigation, Star, Plus, X, ChevronDown, Menu, LogOut } from 'lucide-react';
-
-// Mock Firebase - Replace with actual Firebase in production
-const mockFirebase = {
-  auth: {
-    currentUser: null,
-    signInWithPhoneNumber: async (phone) => {
-      return {
-        confirm: async (code) => {
-          mockFirebase.auth.currentUser = { phoneNumber: phone, uid: '123' };
-          return { user: mockFirebase.auth.currentUser };
-        }
-      };
-    },
-    signOut: async () => {
-      mockFirebase.auth.currentUser = null;
-    }
-  },
-  storage: [],
-  stalls: []
-};
+import { Camera, MapPin, Navigation, Star, Plus, X, LogOut, Phone } from 'lucide-react';
+import GoogleMapComponent from './GoogleMap';
+import { addStall as saveStallToDb, getStalls } from './firestore';
+import { auth, googleProvider } from './firebase';
+import { signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
 
 // Main App Component
 export default function AcchaChai() {
   const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
   const [showAuth, setShowAuth] = useState(false);
   const [showAddStall, setShowAddStall] = useState(false);
   const [selectedStall, setSelectedStall] = useState(null);
   const [stalls, setStalls] = useState([]);
   const [userLocation, setUserLocation] = useState(null);
+  const [activeTab, setActiveTab] = useState('home');
 
+  // Listen for auth state changes
   useEffect(() => {
-    // Get user location
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          setUserLocation({
-            lat: position.coords.latitude,
-            lng: position.coords.longitude
-          });
-        },
-        (error) => console.log('Location error:', error)
-      );
-    }
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      setLoading(false);
+    });
 
-    // Load existing stalls (mock data for demo)
-    setStalls([
-      {
-        id: '1',
-        name: 'Raju Chai Wala',
-        location: { lat: 25.5941, lng: 85.1376 },
-        rating: 'Accha',
-        description: 'Best cutting chai near station',
-        photo: 'https://images.unsplash.com/photo-1571934811356-5cc061b6821f?w=400',
-        addedBy: 'user123',
-        ratings: 12
+    return () => unsubscribe();
+  }, []);
+
+useEffect(() => {
+  // Get user's actual location
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setUserLocation({
+          lat: position.coords.latitude,
+          lng: position.coords.longitude
+        });
+      },
+      (error) => {
+        console.error('Location permission denied:', error);
+        alert('Location access is required to use Accha Chai. Please enable location in your browser settings.');
       },
       {
-        id: '2',
-        name: 'Morning Glory Tea Stall',
-        location: { lat: 25.5951, lng: 85.1386 },
-        rating: 'Accha',
-        description: 'Opens at 5 AM, strong masala chai',
-        photo: 'https://images.unsplash.com/photo-1597318112240-dc4b48a75d3e?w=400',
-        addedBy: 'user456',
-        ratings: 8
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 0
       }
-    ]);
+    );
+  } else {
+    alert('Location services are not supported by your browser.');
+  }
+
+    // Load stalls from Firestore
+    loadStalls();
   }, []);
+
+  const loadStalls = async () => {
+    try {
+      const stallsData = await getStalls();
+      setStalls(stallsData);
+    } catch (error) {
+      console.error('Error loading stalls:', error);
+    }
+  };
+
+  const handleSignOut = async () => {
+    try {
+      await signOut(auth);
+      setUser(null);
+    } catch (error) {
+      console.error('Sign out error:', error);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="h-screen w-full flex items-center justify-center bg-gradient-to-br from-amber-50 to-orange-100">
+        <div className="text-center">
+          <div className="text-6xl mb-4 animate-bounce">☕</div>
+          <p className="text-amber-800">Loading Accha Chai...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!user && !showAuth) {
     return <LandingScreen onLogin={() => setShowAuth(true)} />;
   }
 
   if (showAuth && !user) {
-    return <AuthScreen onAuthComplete={(userData) => {
-      setUser(userData);
-      setShowAuth(false);
-    }} />;
+    return <AuthScreen onAuthComplete={() => setShowAuth(false)} />;
   }
 
   return (
-    <div className="h-screen w-full flex flex-col bg-gray-50 overflow-hidden">
+    <div className="h-[100dvh] w-full flex flex-col bg-gray-50 overflow-hidden">
       {/* Header */}
-      <header className="bg-amber-600 text-white px-4 py-3 shadow-md flex items-center justify-between">
+      <header className="bg-amber-600 text-white px-4 py-3 shadow-md flex items-center justify-between safe-area-top">
         <div className="flex items-center gap-2">
           <div className="text-2xl">☕</div>
-          <h1 className="text-xl font-bold">Accha Chai</h1>
+          <div>
+            <h1 className="text-xl font-bold">Accha Chai</h1>
+            <p className="text-xs text-amber-100">
+              {user?.displayName || user?.email || 'Chai Explorer'}
+            </p>
+          </div>
         </div>
         <button 
-          onClick={() => {
-            mockFirebase.auth.signOut();
-            setUser(null);
-          }}
+          onClick={handleSignOut}
           className="p-2 hover:bg-amber-700 rounded-lg transition"
         >
           <LogOut size={20} />
         </button>
       </header>
 
-      {/* Map View */}
-      <div className="flex-1 relative">
-        <MapView 
-          stalls={stalls}
-          userLocation={userLocation}
-          onStallClick={setSelectedStall}
-        />
+      {/* Main Content Area */}
+      <div className="flex-1 relative overflow-hidden">
+        {/* Home Tab - Keep mounted, just hide */}
+        <div className={activeTab === 'home' ? 'block h-full' : 'hidden'}>
+          <MapView 
+            stalls={stalls}
+            userLocation={userLocation}
+            onStallClick={setSelectedStall}
+          />
 
-        {/* FAB - Add Stall Button */}
-        <button
-          onClick={() => setShowAddStall(true)}
-          className="absolute bottom-6 right-6 bg-amber-600 text-white rounded-full p-4 shadow-lg hover:bg-amber-700 transition"
-        >
-          <Plus size={28} />
-        </button>
+          {/* Stall Detail Bottom Sheet */}
+          {selectedStall && (
+            <StallDetail 
+              stall={selectedStall}
+              onClose={() => setSelectedStall(null)}
+            />
+          )}
+        </div>
 
-        {/* My Location Button */}
-        {userLocation && (
-          <button
-            className="absolute bottom-6 left-6 bg-white text-gray-700 rounded-full p-3 shadow-lg hover:bg-gray-50 transition"
-          >
-            <Navigation size={24} />
-          </button>
+        {/* Explore Tab */}
+        {activeTab === 'explore' && (
+          <ComingSoonScreen title="Explore" icon="🔍" />
+        )}
+
+        {/* Profile Tab */}
+        {activeTab === 'profile' && (
+          <ComingSoonScreen title="Profile" icon="👤" />
         )}
       </div>
 
-      {/* Stall Detail Bottom Sheet */}
-      {selectedStall && (
-        <StallDetail 
-          stall={selectedStall}
-          onClose={() => setSelectedStall(null)}
-        />
-      )}
+     {/* Bottom Navigation - Simple 4 Tabs */}
+     <nav className="bg-white border-t border-gray-200 safe-area-bottom">
+      <div className="grid grid-cols-4 max-w-md mx-auto">
+        {/* Home Tab */}
+        <button
+          onClick={() => setActiveTab('home')}
+          className={`flex flex-col items-center justify-center py-3 transition ${
+            activeTab === 'home' ? 'text-amber-600' : 'text-gray-500'
+          }`}
+        >
+          <MapPin size={24} strokeWidth={2} />
+          <span className="text-xs mt-1.5 font-medium">Home</span>
+        </button>
+
+        {/* Explore Tab */}
+        <button
+          onClick={() => setActiveTab('explore')}
+          className={`flex flex-col items-center justify-center py-3 transition ${
+            activeTab === 'explore' ? 'text-amber-600' : 'text-gray-500'
+          }`}
+        >
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+          <span className="text-xs mt-1.5 font-medium">Explore</span>
+        </button>
+
+        {/* Add Tab */}
+        <button
+          onClick={() => setShowAddStall(true)}
+          className={`flex flex-col items-center justify-center py-3 transition ${
+            showAddStall ? 'text-amber-600' : 'text-gray-500'
+          }`}
+        >
+          <Plus size={24} strokeWidth={2} />
+          <span className="text-xs mt-1.5 font-medium">Add</span>
+        </button>
+
+        {/* Profile Tab */}
+        <button
+          onClick={() => setActiveTab('profile')}
+          className={`flex flex-col items-center justify-center py-3 transition ${
+            activeTab === 'profile' ? 'text-amber-600' : 'text-gray-500'
+          }`}
+        >
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+          </svg>
+          <span className="text-xs mt-1.5 font-medium">Profile</span>
+        </button>
+      </div>
+     </nav>
 
       {/* Add Stall Modal */}
       {showAddStall && (
         <AddStallModal
           userLocation={userLocation}
           onClose={() => setShowAddStall(false)}
-          onSubmit={(newStall) => {
-            setStalls([...stalls, { ...newStall, id: Date.now().toString() }]);
-            setShowAddStall(false);
+          onSubmit={async (newStall) => {
+            try {
+              const savedStall = await saveStallToDb(newStall);
+              setStalls([savedStall, ...stalls]);
+              setShowAddStall(false);
+              setActiveTab('home'); // Go back to home after posting
+              alert('Chai stall added successfully! ☕');
+            } catch (error) {
+              console.error('Error saving stall:', error);
+              alert('Failed to add stall. Please try again.');
+            }
           }}
         />
       )}
@@ -186,29 +256,23 @@ function LandingScreen({ onLogin }) {
   );
 }
 
-// Auth Screen
+// Auth Screen with Real Firebase
 function AuthScreen({ onAuthComplete }) {
-  const [phone, setPhone] = useState('');
-  const [otp, setOtp] = useState('');
-  const [step, setStep] = useState('phone');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
-  const handleSendOTP = async () => {
+  const handleGoogleSignIn = async () => {
     setLoading(true);
-    // Mock: In production, use Firebase
-    setTimeout(() => {
-      setStep('otp');
+    setError('');
+    try {
+      await signInWithPopup(auth, googleProvider);
+      onAuthComplete();
+    } catch (error) {
+      console.error('Google sign in error:', error);
+      setError(error.message || 'Failed to sign in. Please try again.');
+    } finally {
       setLoading(false);
-    }, 1000);
-  };
-
-  const handleVerifyOTP = async () => {
-    setLoading(true);
-    // Mock: In production, verify with Firebase
-    setTimeout(() => {
-      onAuthComplete({ phoneNumber: phone, uid: '123' });
-      setLoading(false);
-    }, 1000);
+    }
   };
 
   return (
@@ -218,68 +282,53 @@ function AuthScreen({ onAuthComplete }) {
           <div className="text-6xl mb-4">☕</div>
           <h2 className="text-2xl font-bold text-gray-800">Welcome to Accha Chai</h2>
           <p className="text-gray-600 mt-2">
-            {step === 'phone' ? 'Enter your phone number' : 'Enter OTP'}
+            Sign in to start discovering and sharing chai spots
           </p>
         </div>
 
-        {step === 'phone' ? (
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Phone Number
-              </label>
-              <div className="flex gap-2">
-                <div className="bg-gray-100 px-4 py-3 rounded-lg text-gray-700 font-medium">
-                  +91
-                </div>
-                <input
-                  type="tel"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  placeholder="98765 43210"
-                  className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
-                  maxLength="10"
-                />
-              </div>
-            </div>
-            <button
-              onClick={handleSendOTP}
-              disabled={phone.length !== 10 || loading}
-              className="w-full bg-amber-600 text-white py-3 rounded-lg font-semibold hover:bg-amber-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {loading ? 'Sending...' : 'Send OTP'}
-            </button>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Enter 6-digit OTP
-              </label>
-              <input
-                type="text"
-                value={otp}
-                onChange={(e) => setOtp(e.target.value)}
-                placeholder="123456"
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent text-center text-2xl tracking-widest"
-                maxLength="6"
-              />
-            </div>
-            <button
-              onClick={handleVerifyOTP}
-              disabled={otp.length !== 6 || loading}
-              className="w-full bg-amber-600 text-white py-3 rounded-lg font-semibold hover:bg-amber-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {loading ? 'Verifying...' : 'Verify OTP'}
-            </button>
-            <button
-              onClick={() => setStep('phone')}
-              className="w-full text-amber-600 py-2 text-sm hover:underline"
-            >
-              Change phone number
-            </button>
+        {error && (
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+            {error}
           </div>
         )}
+
+        <div className="space-y-3">
+          <button
+            onClick={handleGoogleSignIn}
+            disabled={loading}
+            className="w-full flex items-center justify-center gap-3 bg-white border-2 border-gray-300 text-gray-700 py-3 rounded-lg font-semibold hover:bg-gray-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <svg className="w-5 h-5" viewBox="0 0 24 24">
+              <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+              <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+              <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+              <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+            </svg>
+            {loading ? 'Signing in...' : 'Continue with Google'}
+          </button>
+
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-gray-300"></div>
+            </div>
+            <div className="relative flex justify-center text-sm">
+              <span className="px-2 bg-white text-gray-500">Coming soon</span>
+            </div>
+          </div>
+
+          <button
+            disabled
+            className="w-full flex items-center justify-center gap-3 bg-gray-100 text-gray-400 py-3 rounded-lg font-semibold cursor-not-allowed"
+          >
+            <Phone size={20} />
+            Phone Number (Coming Soon)
+          </button>
+        </div>
+
+        <div className="mt-6 text-center text-sm text-gray-600">
+          <p>By continuing, you agree to our</p>
+          <p className="text-amber-600">Terms of Service & Privacy Policy</p>
+        </div>
       </div>
     </div>
   );
@@ -288,47 +337,12 @@ function AuthScreen({ onAuthComplete }) {
 // Map View Component
 function MapView({ stalls, userLocation, onStallClick }) {
   return (
-    <div className="w-full h-full bg-gray-200 relative">
-      {/* Mock Map - In production, use Google Maps API */}
-      <div className="absolute inset-0 bg-gradient-to-br from-green-100 to-blue-100">
-        <div className="absolute inset-0 flex items-center justify-center text-gray-400">
-          <div className="text-center">
-            <MapPin size={48} className="mx-auto mb-2" />
-            <p className="text-sm">Map View</p>
-            <p className="text-xs mt-1">
-              Integrate Google Maps API in production
-            </p>
-          </div>
-        </div>
-
-        {/* Mock Markers */}
-        {stalls.map((stall) => (
-          <button
-            key={stall.id}
-            onClick={() => onStallClick(stall)}
-            className="absolute transform -translate-x-1/2 -translate-y-full"
-            style={{
-              left: `${50 + (Math.random() - 0.5) * 20}%`,
-              top: `${50 + (Math.random() - 0.5) * 20}%`
-            }}
-          >
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center shadow-lg ${
-              stall.rating === 'Accha' ? 'bg-green-500' :
-              stall.rating === 'Thik-Thak' ? 'bg-yellow-500' :
-              'bg-red-500'
-            }`}>
-              <span className="text-white text-lg">☕</span>
-            </div>
-          </button>
-        ))}
-
-        {/* User Location */}
-        {userLocation && (
-          <div className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2">
-            <div className="w-4 h-4 bg-blue-500 rounded-full border-2 border-white shadow-lg"></div>
-          </div>
-        )}
-      </div>
+    <div className="w-full h-full relative">
+      <GoogleMapComponent 
+        stalls={stalls}
+        userLocation={userLocation}
+        onStallClick={onStallClick}
+      />
     </div>
   );
 }
@@ -346,14 +360,12 @@ function StallDetail({ stall, onClose }) {
       </div>
 
       <div className="p-4 space-y-4">
-        {/* Photo */}
         <img
           src={stall.photo}
           alt={stall.name}
           className="w-full h-48 object-cover rounded-lg"
         />
 
-        {/* Rating Badge */}
         <div className="flex items-center gap-2">
           <span className={`px-3 py-1 rounded-full text-white font-semibold ${
             stall.rating === 'Accha' ? 'bg-green-500' :
@@ -367,19 +379,29 @@ function StallDetail({ stall, onClose }) {
           </span>
         </div>
 
-        {/* Description */}
         <div>
           <h3 className="font-bold text-lg text-gray-800 mb-2">{stall.name}</h3>
           <p className="text-gray-600">{stall.description}</p>
         </div>
 
-        {/* Actions */}
         <div className="grid grid-cols-2 gap-3 pt-2">
-          <button className="flex items-center justify-center gap-2 bg-blue-500 text-white py-3 rounded-lg font-semibold hover:bg-blue-600 transition">
+          <button 
+            onClick={() => {
+              const { lat, lng } = stall.location;
+              // Open in Google Maps
+              window.open(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`, '_blank');
+            }}
+            className="flex items-center justify-center gap-2 bg-blue-500 text-white py-3 rounded-lg font-semibold active:bg-blue-600 transition"
+          >
             <Navigation size={20} />
             Get Directions
           </button>
-          <button className="flex items-center justify-center gap-2 bg-amber-500 text-white py-3 rounded-lg font-semibold hover:bg-amber-600 transition">
+          <button 
+            onClick={() => {
+              alert('Rating feature coming soon! For now, add your own stall with your rating ☕');
+            }}
+            className="flex items-center justify-center gap-2 bg-amber-500 text-white py-3 rounded-lg font-semibold active:bg-amber-600 transition"
+          >
             <Star size={20} />
             Rate Stall
           </button>
@@ -395,7 +417,6 @@ function AddStallModal({ userLocation, onClose, onSubmit }) {
   const [photo, setPhoto] = useState(null);
   const [rating, setRating] = useState('');
   const [description, setDescription] = useState('');
-  const fileInputRef = useRef(null);
 
   const handlePhotoCapture = (e) => {
     const file = e.target.files[0];
@@ -415,7 +436,7 @@ function AddStallModal({ userLocation, onClose, onSubmit }) {
       rating,
       description,
       location: userLocation,
-      addedBy: 'currentUser',
+      addedBy: auth.currentUser?.uid || 'anonymous',
       ratings: 0,
       name: 'New Chai Stall'
     });
@@ -424,7 +445,6 @@ function AddStallModal({ userLocation, onClose, onSubmit }) {
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-end">
       <div className="bg-white w-full rounded-t-3xl max-h-[90vh] overflow-y-auto">
-        {/* Header */}
         <div className="sticky top-0 bg-white px-4 py-4 flex items-center justify-between border-b">
           <h2 className="text-xl font-bold">Add Chai Stall</h2>
           <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full">
@@ -435,37 +455,74 @@ function AddStallModal({ userLocation, onClose, onSubmit }) {
         <div className="p-6 space-y-6">
           {step === 'camera' ? (
             <div className="space-y-4">
-              <div 
-                onClick={() => fileInputRef.current?.click()}
-                className="border-2 border-dashed border-gray-300 rounded-lg p-12 text-center cursor-pointer hover:border-amber-500 transition"
-              >
-                <Camera size={48} className="mx-auto text-gray-400 mb-4" />
-                <p className="text-gray-600 font-medium">Tap to take photo</p>
-                <p className="text-gray-400 text-sm mt-1">or select from gallery</p>
+              <div className="text-center mb-4">
+                <Camera size={64} className="mx-auto text-amber-500 mb-3" />
+                <p className="text-gray-700 font-medium text-lg">Add a photo of the chai stall</p>
               </div>
+
+              {/* Camera Input */}
               <input
-                ref={fileInputRef}
+                id="photo-camera"
                 type="file"
                 accept="image/*"
                 capture="environment"
                 onChange={handlePhotoCapture}
                 className="hidden"
               />
+              
+              {/* Gallery Input */}
+              <input
+                id="photo-gallery"
+                type="file"
+                accept="image/*"
+                onChange={handlePhotoCapture}
+                className="hidden"
+              />
+
+              {/* Two separate buttons */}
+              <div className="grid grid-cols-2 gap-3">
+                <label 
+                  htmlFor="photo-camera"
+                  className="flex flex-col items-center justify-center border-2 border-amber-400 rounded-lg p-6 cursor-pointer active:bg-amber-50 transition"
+                >
+                  <Camera size={32} className="text-amber-500 mb-2" />
+                  <span className="text-gray-700 font-medium">Camera</span>
+                </label>
+
+                <label 
+                  htmlFor="photo-gallery"
+                  className="flex flex-col items-center justify-center border-2 border-amber-400 rounded-lg p-6 cursor-pointer active:bg-amber-50 transition"
+                >
+                  <svg className="w-8 h-8 text-amber-500 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                  <span className="text-gray-700 font-medium">Gallery</span>
+                </label>
+              </div>
+
+              <p className="text-center text-gray-500 text-sm mt-2">
+                Choose how you want to add a photo
+              </p>
             </div>
           ) : (
             <div className="space-y-6">
-              {/* Photo Preview */}
               <div className="relative">
                 <img src={photo} alt="Chai stall" className="w-full h-48 object-cover rounded-lg" />
-                <button
-                  onClick={() => setStep('camera')}
-                  className="absolute top-2 right-2 bg-white p-2 rounded-full shadow-lg"
+                <label 
+                  htmlFor="photo-input-change"
+                  className="absolute top-2 right-2 bg-white p-2 rounded-full shadow-lg cursor-pointer active:bg-gray-100"
                 >
                   <Camera size={20} />
-                </button>
+                </label>
+                <input
+                  id="photo-input-change"
+                  type="file"
+                  accept="image/*"
+                  onChange={handlePhotoCapture}
+                  className="hidden"
+                />
               </div>
 
-              {/* Rating Selection */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-3">
                   How was the chai?
@@ -474,13 +531,14 @@ function AddStallModal({ userLocation, onClose, onSubmit }) {
                   {['Accha', 'Thik-Thak', 'Nahi'].map((r) => (
                     <button
                       key={r}
+                      type="button"
                       onClick={() => setRating(r)}
                       className={`py-3 rounded-lg font-semibold transition ${
                         rating === r
                           ? r === 'Accha' ? 'bg-green-500 text-white' :
                             r === 'Thik-Thak' ? 'bg-yellow-500 text-white' :
                             'bg-red-500 text-white'
-                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                          : 'bg-gray-100 text-gray-700 active:bg-gray-200'
                       }`}
                     >
                       {r}!
@@ -489,7 +547,6 @@ function AddStallModal({ userLocation, onClose, onSubmit }) {
                 </div>
               </div>
 
-              {/* Description */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Tell us about this chai (optional)
@@ -505,17 +562,54 @@ function AddStallModal({ userLocation, onClose, onSubmit }) {
                 <p className="text-xs text-gray-500 mt-1">{description.length}/150</p>
               </div>
 
-              {/* Submit */}
               <button
+                type="button"
                 onClick={handleSubmit}
                 disabled={!rating}
-                className="w-full bg-amber-600 text-white py-4 rounded-lg font-semibold hover:bg-amber-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full bg-amber-600 text-white py-4 rounded-lg font-semibold active:bg-amber-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Post Chai Stall
               </button>
             </div>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// Coming Soon Screen
+function ComingSoonScreen({ title, icon }) {
+  return (
+    <div className="h-full w-full flex flex-col items-center justify-center bg-gradient-to-br from-amber-50 to-orange-100 p-6">
+      <div className="text-center space-y-6">
+        <div className="text-8xl mb-4">{icon}</div>
+        <h2 className="text-3xl font-bold text-amber-900">{title}</h2>
+        <p className="text-xl text-amber-800">Coming Soon!</p>
+        <div className="space-y-2 pt-4">
+          <p className="text-gray-700">We're working on exciting features:</p>
+          <ul className="text-left text-gray-600 space-y-1 max-w-xs mx-auto">
+            {title === 'Explore' && (
+              <>
+                <li>• Recent discoveries</li>
+                <li>• Popular stalls</li>
+                <li>• Filter by rating</li>
+                <li>• Search nearby</li>
+              </>
+            )}
+            {title === 'Profile' && (
+              <>
+                <li>• Your posted stalls</li>
+                <li>• Chai points & badges</li>
+                <li>• Favorites</li>
+                <li>• Settings</li>
+              </>
+            )}
+          </ul>
+        </div>
+        <p className="text-sm text-amber-700 pt-8">
+          Stay tuned! ☕
+        </p>
       </div>
     </div>
   );
