@@ -4,10 +4,26 @@ import GoogleMapComponent from './GoogleMap';
 import { addStall as saveStallToDb, getStalls } from './firestore';
 import { auth, googleProvider } from './firebase';
 import { signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
+import { collection, query, where, getDocs } from 'firebase/firestore';
+import { db } from './firebase';
+
+// Check if user is whitelisted in Firestore
+async function checkBetaAccess(email) {
+  try {
+    const betaUsersRef = collection(db, 'betaUsers');
+    const q = query(betaUsersRef, where('email', '==', email), where('status', '==', 'active'));
+    const snapshot = await getDocs(q);
+    return !snapshot.empty;
+  } catch (error) {
+    console.error('Error checking beta access:', error);
+    return false; // If error, deny access (safe default)
+  }
+}
 
 // Main App Component
 export default function AcchaChai() {
   const [user, setUser] = useState(null);
+  const [accessDenied, setAccessDenied] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showAuth, setShowAuth] = useState(false);
   const [showAddStall, setShowAddStall] = useState(false);
@@ -18,8 +34,24 @@ export default function AcchaChai() {
 
   // Listen for auth state changes
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      if (currentUser) {
+        // Check if user has beta access
+        const hasAccess = await checkBetaAccess(currentUser.email);
+        
+        if (!hasAccess) {
+          // Sign them out and show message
+          await signOut(auth);
+          alert('⚠️ Accha Chai is currently in private beta.\n\nTo get access, please contact the developer with your email: ' + currentUser.email);
+          setAccessDenied(currentUser.email);
+          setUser(null);
+          setLoading(false);
+          return;
+        }
+      }
+      
       setUser(currentUser);
+      setAccessDenied(null);
       setLoading(false);
     });
 
