@@ -5,25 +5,30 @@ Community-driven app to discover the best chai stalls in India.
 ## 🚀 Live Demo
 **https://accha-chai.web.app**
 
-## ✨ Features (Current - Beta v0.1)
+## ✨ Features (Current - Beta v0.2)
 - 🗺️ Google Maps integration with real-time location
-- 📍 **Pin placement for accurate stall marking** (like delivery apps!)
+- 📍 **Pin placement for accurate stall marking** (delivery app style)
 - 🔐 Google Sign-In authentication
 - 🔒 Beta access whitelist system (Firestore-based)
-- 📸 Camera & gallery photo upload
+- 📸 Camera & gallery photo upload with **auto-compression**
 - ⭐ Rating system (Accha/Thik-Thak/Nahi)
+- 👤 **Profile page with user stats**
+- ✏️ **Edit your stalls** (photo, name, rating, description)
+- 🗑️ **Delete your stalls** (with community ownership protection)
+- 🏛️ **Community ownership** (stalls older than 7 days protected)
+- 👋 **Account management** (logout, delete account)
 - 💾 Cloud database (Firebase Firestore)
 - 📱 Mobile-responsive PWA (installable)
 - 🧭 My Location button
+- 👆 **Single-finger map movement**
 
 ## 🚧 Coming Soon
-- 🔍 Explore feed (recent discoveries)
-- 👤 User profiles & stall management
-- ✏️ Edit/delete your stalls
+- 🔍 Explore feed (list view of all stalls)
+- 🏷️ Custom stall names when posting
 - 🔎 Search & filter stalls
-- 🖼️ Photo optimization (Cloudinary)
-- 💬 Rating others' stalls
-- 🏷️ Custom stall names
+- 🖼️ Cloudinary photo optimization
+- 💬 Rate others' stalls
+- 📍 Report closed stalls
 - 🏆 Chai points & badges
 
 ## 🛠️ Tech Stack
@@ -53,11 +58,16 @@ Built with ❤️ and ☕
 
 **Status:** Beta Testing (v0.2)  
 **Started:** November 2024  
-**Last Updated:** November 11, 2025  
+**Last Updated:** November 14, 2025  
 **Current Phase:** Private Beta (Whitelist-based)
 
-## 🎯 Recent Updates (v0.2)
-- ✅ Pin placement system for accurate location marking
-- ✅ Beta access control via Firestore whitelist
-- ✅ Improved error handling and loading states
-- ✅ Fixed Firestore security rules for authenticated writes
+## 🎯 Recent Updates (v0.2 - November 14, 2025)
+- ✅ Profile page with user stats and stall management
+- ✅ Edit stalls (photo, name, rating, description)
+- ✅ Delete stalls with community ownership protection (7+ days)
+- ✅ Account management (logout, delete account)
+- ✅ Automatic photo compression (70-90% size reduction)
+- ✅ Single-finger map movement (improved mobile UX)
+- ✅ Fixed camera photo upload issues
+- ✅ Better error handling and logging
+- ✅ Updated Firestore security rules
