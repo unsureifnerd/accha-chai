@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Camera, MapPin, Navigation, Star, Plus, X, LogOut, Phone } from 'lucide-react';
 import GoogleMapComponent from './GoogleMap';
-import { addStall as saveStallToDb, getStalls } from './firestore';
+import { addStall as saveStallToDb, getStalls, deleteStall, updateStall } from './firestore';
 import { auth, googleProvider } from './firebase';
-import { signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { signInWithPopup, signOut, onAuthStateChanged, deleteUser } from 'firebase/auth';
+import { collection, query, where, getDocs, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db } from './firebase';
 
 // Check if user is whitelisted in Firestore
@@ -31,6 +31,7 @@ export default function AcchaChai() {
   const [stalls, setStalls] = useState([]);
   const [userLocation, setUserLocation] = useState(null);
   const [activeTab, setActiveTab] = useState('home');
+  const [editingStall, setEditingStall] = useState(null);
   const [isPinningLocation, setIsPinningLocation] = useState(false);
   const [pinnedLocation, setPinnedLocation] = useState(null);
   const mapRef = useRef(null);
@@ -173,7 +174,45 @@ useEffect(() => {
 
         {/* Profile Tab */}
         {activeTab === 'profile' && (
-          <ComingSoonScreen title="Profile" icon="👤" />
+          <ProfilePage
+            user={user}
+            stalls={stalls}
+            onEditStall={setEditingStall}
+            onDeleteStall={async (stallId) => {
+              try {
+                await deleteStall(stallId);
+                setStalls(stalls.filter(s => s.id !== stallId));
+                alert('Stall deleted successfully!');
+              } catch (error) {
+                console.error('Error deleting stall:', error);
+                alert('Failed to delete stall. Please try again.');
+              }
+            }}
+            onSignOut={handleSignOut}
+            onDeleteAccount={async () => {
+              try {
+                // Anonymize user's stalls
+                const userStalls = stalls.filter(s => s.addedBy === user.uid);
+                for (const stall of userStalls) {
+                  await updateStall(stall.id, {
+                    addedBy: 'deleted-user',
+                    addedByName: 'Anonymous User'
+                  });
+                }
+                
+                // Delete from betaUsers
+                await deleteDoc(doc(db, 'betaUsers', user.email));
+                
+                // Delete auth account
+                await deleteUser(auth.currentUser);
+                
+                alert('Account deleted successfully.');
+              } catch (error) {
+                console.error('Error deleting account:', error);
+                alert('Failed to delete account. Please try again or contact support.');
+              }
+            }}
+          />
         )}
       </div>
 
@@ -254,16 +293,56 @@ useEffect(() => {
             setPinnedLocation(null);
           }}
           onSubmit={async (newStall) => {
+            console.log('Submitting stall:', {
+              hasPhoto: !!newStall.photo,
+              photoSize: newStall.photo?.length,
+              rating: newStall.rating,
+              location: newStall.location,
+              addedBy: newStall.addedBy
+            });
+            
             try {
               const savedStall = await saveStallToDb(newStall);
+              console.log('Stall saved successfully:', savedStall);
               setStalls([savedStall, ...stalls]);
               setShowAddStall(false);
               setPinnedLocation(null);
               setActiveTab('home'); // Go back to home after posting
               alert('Chai stall added successfully! ☕');
             } catch (error) {
-              console.error('Error saving stall:', error);
-              alert('Failed to add stall. Please try again.');
+              console.error('Error saving stall - Full details:', {
+                message: error.message,
+                code: error.code,
+                stack: error.stack,
+                stallData: newStall
+              });
+              alert(`Failed to add stall: ${error.message}\n\nCheck console for details.`);
+            }
+          }}
+        />
+      )}
+
+      {/* Edit Stall Modal */}
+      {editingStall && (
+        <EditStallModal
+          stall={editingStall}
+          onClose={() => setEditingStall(null)}
+          onSave={async (updatedStall) => {
+            try {
+              await updateStall(updatedStall.id, {
+                photo: updatedStall.photo,
+                rating: updatedStall.rating,
+                description: updatedStall.description,
+                name: updatedStall.name
+              });
+              
+              // Update local state
+              setStalls(stalls.map(s => s.id === updatedStall.id ? updatedStall : s));
+              setEditingStall(null);
+              alert('Stall updated successfully! ☕');
+            } catch (error) {
+              console.error('Error updating stall:', error);
+              alert('Failed to update stall. Please try again.');
             }
           }}
         />
@@ -465,154 +544,76 @@ function StallDetail({ stall, onClose }) {
   );
 }
 
-// Pin Placement Screen
-function PinPlacementScreen({ onConfirm, onCancel, userLocation }) {
-  const [map, setMap] = useState(null);
-  const [centerCoords, setCenterCoords] = useState(userLocation);
-
-  useEffect(() => {
-    // Initialize map
-    if (window.google && userLocation) {
-      const googleMap = new window.google.maps.Map(document.getElementById('pin-map'), {
-        center: userLocation,
-        zoom: 18,
-        disableDefaultUI: true,
-        zoomControl: true,
-        gestureHandling: 'greedy',
-        styles: [
-          {
-            featureType: 'poi',
-            elementType: 'labels',
-            stylers: [{ visibility: 'on' }]
-          }
-        ]
-      });
-
-      setMap(googleMap);
-
-      // Update coordinates as map moves
-      googleMap.addListener('center_changed', () => {
-        const center = googleMap.getCenter();
-        setCenterCoords({
-          lat: center.lat(),
-          lng: center.lng()
-        });
-      });
-    }
-  }, [userLocation]);
-
-  return (
-    <div className="fixed inset-0 z-50 bg-white">
-      {/* Header */}
-      <div className="absolute top-0 left-0 right-0 z-10 bg-white shadow-md p-4 safe-area-top">
-        <div className="flex items-center justify-between">
-          <button
-            onClick={onCancel}
-            className="text-gray-600 font-medium"
-          >
-            Cancel
-          </button>
-          <h2 className="text-lg font-bold text-gray-800">Pin Location</h2>
-          <div className="w-16"></div>
-        </div>
-        <p className="text-sm text-gray-600 mt-2 text-center">
-          Move the map to position the pin exactly on the stall
-        </p>
-      </div>
-
-      {/* Map Container */}
-      <div id="pin-map" className="w-full h-full"></div>
-
-      {/* Fixed Pin in Center */}
-      <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-10 pointer-events-none">
-        <MapPin 
-          size={48} 
-          className="text-red-600 drop-shadow-lg"
-          fill="currentColor"
-        />
-      </div>
-
-      {/* Confirm Button */}
-      <div className="absolute bottom-0 left-0 right-0 z-10 px-6 pb-8 safe-area-bottom bg-white">
-        <button
-          onClick={() => centerCoords && onConfirm(centerCoords)}
-          disabled={!centerCoords}
-          className="w-full bg-amber-600 text-white py-4 rounded-xl font-bold text-lg shadow-lg hover:bg-amber-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition"
-        >
-          Confirm Location
-        </button>
-        
-        {centerCoords && (
-          <p className="text-xs text-gray-500 text-center mt-2">
-            📍 {centerCoords.lat.toFixed(6)}, {centerCoords.lng.toFixed(6)}
-          </p>
-        )}
-      </div>
-    </div>
-  );
-}
-
 // Add Stall Modal
 function AddStallModal({ userLocation, onClose, onSubmit }) {
   const [step, setStep] = useState('camera');
   const [photo, setPhoto] = useState(null);
   const [rating, setRating] = useState('');
   const [description, setDescription] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handlePhotoCapture = (e) => {
     const file = e.target.files[0];
+    console.log('Photo capture triggered:', file);
+    
     if (file) {
+      console.log('File details:', {
+        name: file.name,
+        type: file.type,
+        size: file.size
+      });
+      
+      // Compress and resize image
       const reader = new FileReader();
       reader.onload = (e) => {
-        setPhoto(e.target.result);
-        setStep('details');
+        const img = new Image();
+        img.onload = () => {
+          // Create canvas for compression
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          
+          // Resize to max 1200px width while maintaining aspect ratio
+          const maxWidth = 1200;
+          const scale = maxWidth / img.width;
+          canvas.width = img.width > maxWidth ? maxWidth : img.width;
+          canvas.height = img.width > maxWidth ? img.height * scale : img.height;
+          
+          // Draw and compress
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          
+          // Convert to compressed JPEG (70% quality)
+          const compressedPhoto = canvas.toDataURL('image/jpeg', 0.7);
+          
+          console.log('Photo compressed:', {
+            originalSize: file.size,
+            compressedSize: compressedPhoto.length,
+            reduction: `${((1 - compressedPhoto.length / file.size) * 100).toFixed(1)}%`
+          });
+          
+          setPhoto(compressedPhoto);
+          setStep('details');
+        };
+        img.src = e.target.result;
+      };
+      reader.onerror = (error) => {
+        console.error('Error reading photo:', error);
+        alert('Failed to load photo. Please try again.');
       };
       reader.readAsDataURL(file);
+    } else {
+      console.log('No file selected');
     }
   };
 
-  const handleSubmit = async () => {
-    console.log('Submit clicked!');
-    console.log('Photo:', photo ? 'Yes' : 'No');
-    console.log('Rating:', rating);
-    console.log('Location:', userLocation);
-    
-    if (!photo) {
-      alert('Please add a photo!');
-      return;
-    }
-    
-    if (!rating) {
-      alert('Please select a rating!');
-      return;
-    }
-    
-    if (!userLocation) {
-      alert('Location not available. Please try again.');
-      return;
-    }
-    
-    console.log('All validations passed, calling onSubmit...');
-    
-    setIsSubmitting(true);
-    
-    try {
-      await onSubmit({
-        photo,
-        rating,
-        description,
-        location: userLocation,
-        addedBy: auth.currentUser?.uid || 'anonymous',
-        ratings: 0,
-        name: 'New Chai Stall'
-      });
-      console.log('Submit successful!');
-    } catch (error) {
-      console.error('Submit error:', error);
-      alert('Error posting stall: ' + error.message);
-      setIsSubmitting(false);
-    }
+  const handleSubmit = () => {
+    onSubmit({
+      photo,
+      rating,
+      description,
+      location: userLocation,
+      addedBy: auth.currentUser?.uid || 'anonymous',
+      ratings: 0,
+      name: 'New Chai Stall'
+    });
   };
 
   return (
@@ -738,13 +739,424 @@ function AddStallModal({ userLocation, onClose, onSubmit }) {
               <button
                 type="button"
                 onClick={handleSubmit}
-                disabled={!rating || isSubmitting}
+                disabled={!rating}
                 className="w-full bg-amber-600 text-white py-4 rounded-lg font-semibold active:bg-amber-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isSubmitting ? 'Posting...' : 'Post Chai Stall'}
+                Post Chai Stall
               </button>
             </div>
           )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Pin Placement Screen
+function PinPlacementScreen({ onConfirm, onCancel, userLocation }) {
+  const [map, setMap] = useState(null);
+  const [centerCoords, setCenterCoords] = useState(userLocation);
+
+  useEffect(() => {
+    // Initialize map
+    if (window.google && userLocation) {
+      const googleMap = new window.google.maps.Map(document.getElementById('pin-map'), {
+        center: userLocation,
+        zoom: 18,
+        disableDefaultUI: true,
+        zoomControl: true,
+        gestureHandling: 'greedy',
+        styles: [
+          {
+            featureType: 'poi',
+            elementType: 'labels',
+            stylers: [{ visibility: 'on' }]
+          }
+        ]
+      });
+
+      setMap(googleMap);
+
+      // Update coordinates as map moves
+      googleMap.addListener('center_changed', () => {
+        const center = googleMap.getCenter();
+        setCenterCoords({
+          lat: center.lat(),
+          lng: center.lng()
+        });
+      });
+    }
+  }, [userLocation]);
+
+  return (
+    <div className="fixed inset-0 z-50 bg-white">
+      {/* Header */}
+      <div className="absolute top-0 left-0 right-0 z-10 bg-white shadow-md p-4 safe-area-top">
+        <div className="flex items-center justify-between">
+          <button
+            onClick={onCancel}
+            className="text-gray-600 font-medium"
+          >
+            Cancel
+          </button>
+          <h2 className="text-lg font-bold text-gray-800">Pin Location</h2>
+          <div className="w-16"></div>
+        </div>
+        <p className="text-sm text-gray-600 mt-2 text-center">
+          Move the map to position the pin exactly on the stall
+        </p>
+      </div>
+
+      {/* Map Container */}
+      <div id="pin-map" className="w-full h-full"></div>
+
+      {/* Fixed Pin in Center */}
+      <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-10 pointer-events-none">
+        <MapPin 
+          size={48} 
+          className="text-red-600 drop-shadow-lg"
+          fill="currentColor"
+        />
+      </div>
+
+      {/* Confirm Button */}
+      <div className="absolute bottom-0 left-0 right-0 z-10 px-6 pb-8 safe-area-bottom bg-white">
+        <button
+          onClick={() => centerCoords && onConfirm(centerCoords)}
+          disabled={!centerCoords}
+          className="w-full bg-amber-600 text-white py-4 rounded-xl font-bold text-lg shadow-lg hover:bg-amber-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition"
+        >
+          Confirm Location
+        </button>
+        
+        {centerCoords && (
+          <p className="text-xs text-gray-500 text-center mt-2">
+            📍 {centerCoords.lat.toFixed(6)}, {centerCoords.lng.toFixed(6)}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Profile Page Component
+function ProfilePage({ user, stalls, onEditStall, onDeleteStall, onSignOut, onDeleteAccount }) {
+  const userStalls = stalls.filter(stall => stall.addedBy === user.uid);
+  
+  const stallCounts = {
+    total: userStalls.length,
+    accha: userStalls.filter(s => s.rating === 'Accha').length,
+    thikThak: userStalls.filter(s => s.rating === 'Thik-Thak').length,
+    nahi: userStalls.filter(s => s.rating === 'Nahi').length
+  };
+
+  return (
+    <div className="h-full w-full overflow-y-auto bg-gray-50">
+      <div className="max-w-2xl mx-auto p-6 pb-24 space-y-6">
+        
+        {/* User Info Card */}
+        <div className="bg-white rounded-2xl shadow-sm p-6">
+          <div className="flex items-center gap-4 mb-4">
+            <img 
+              src={user.photoURL || 'https://via.placeholder.com/80'} 
+              alt={user.displayName}
+              className="w-20 h-20 rounded-full border-2 border-amber-200"
+            />
+            <div className="flex-1">
+              <h2 className="text-2xl font-bold text-gray-900">{user.displayName || 'Chai Lover'}</h2>
+              <p className="text-sm text-gray-600">{user.email}</p>
+            </div>
+          </div>
+
+          {/* Stats */}
+          <div className="grid grid-cols-4 gap-3 pt-4 border-t border-gray-100">
+            <div className="text-center">
+              <div className="text-2xl font-bold text-amber-600">{stallCounts.total}</div>
+              <div className="text-xs text-gray-600">Stalls</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-green-600">{stallCounts.accha}</div>
+              <div className="text-xs text-gray-600">Accha</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-yellow-600">{stallCounts.thikThak}</div>
+              <div className="text-xs text-gray-600">Thik-Thak</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-red-600">{stallCounts.nahi}</div>
+              <div className="text-xs text-gray-600">Nahi</div>
+            </div>
+          </div>
+        </div>
+
+        {/* My Stalls */}
+        <div className="bg-white rounded-2xl shadow-sm p-6">
+          <h3 className="text-xl font-bold text-gray-900 mb-4">My Stalls ({userStalls.length})</h3>
+          
+          {userStalls.length === 0 ? (
+            <div className="text-center py-12">
+              <div className="text-6xl mb-3">☕</div>
+              <p className="text-gray-600">You haven't added any stalls yet</p>
+              <p className="text-sm text-gray-500 mt-2">Click the + button to add your first stall!</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {userStalls.map((stall) => {
+                const isOld = (Date.now() - stall.createdAt?.toMillis?.()) > 7 * 24 * 60 * 60 * 1000; // 7 days
+                const isCommunityOwned = isOld; // Simple rule for now
+                
+                return (
+                  <div key={stall.id} className="border border-gray-200 rounded-xl p-4">
+                    <div className="flex gap-3">
+                      <img 
+                        src={stall.photo} 
+                        alt={stall.name || 'Chai stall'}
+                        className="w-20 h-20 object-cover rounded-lg"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <h4 className="font-semibold text-gray-900 truncate">
+                          {stall.name || 'Chai Stall'}
+                        </h4>
+                        <p className="text-sm text-gray-600 truncate">{stall.description || 'No description'}</p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className={`text-sm font-medium ${
+                            stall.rating === 'Accha' ? 'text-green-600' :
+                            stall.rating === 'Thik-Thak' ? 'text-yellow-600' :
+                            'text-red-600'
+                          }`}>
+                            {stall.rating}!
+                          </span>
+                          {isCommunityOwned && (
+                            <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">
+                              Community-owned
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div className="flex gap-2 mt-3">
+                      <button
+                        onClick={() => onEditStall(stall)}
+                        className="flex-1 bg-amber-100 text-amber-700 py-2 rounded-lg font-medium text-sm hover:bg-amber-200 transition"
+                      >
+                        Edit
+                      </button>
+                      {!isCommunityOwned ? (
+                        <button
+                          onClick={() => {
+                            if (window.confirm('Delete this stall? This cannot be undone.')) {
+                              onDeleteStall(stall.id);
+                            }
+                          }}
+                          className="flex-1 bg-red-100 text-red-700 py-2 rounded-lg font-medium text-sm hover:bg-red-200 transition"
+                        >
+                          Delete
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => alert('This stall is community-owned and cannot be deleted. You can report issues if the stall is closed.')}
+                          className="flex-1 bg-gray-100 text-gray-500 py-2 rounded-lg font-medium text-sm"
+                          disabled
+                        >
+                          Can't Delete
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Support Section */}
+        <div className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-2xl shadow-sm p-6">
+          <h3 className="text-lg font-bold text-gray-900 mb-3">Support Accha Chai ☕</h3>
+          <p className="text-sm text-gray-700 mb-4">
+            Help keep this project running and ad-free!
+          </p>
+          <div className="space-y-2">
+            <button
+              onClick={() => alert('Thank you for your support! ❤️\n\nDonation feature coming soon.')}
+              className="w-full bg-amber-600 text-white py-3 rounded-lg font-semibold hover:bg-amber-700 transition"
+            >
+              ☕ Buy Me a Chai
+            </button>
+            <p className="text-xs text-center text-gray-600">
+              Built with ❤️ in India
+            </p>
+          </div>
+        </div>
+
+        {/* Account Actions */}
+        <div className="bg-white rounded-2xl shadow-sm p-6 space-y-3">
+          <h3 className="text-lg font-bold text-gray-900 mb-3">Account</h3>
+          
+          <button
+            onClick={onSignOut}
+            className="w-full bg-gray-100 text-gray-700 py-3 rounded-lg font-semibold hover:bg-gray-200 transition flex items-center justify-center gap-2"
+          >
+            <LogOut size={20} />
+            Logout
+          </button>
+          
+          <button
+            onClick={() => {
+              if (window.confirm('⚠️ Delete your account?\n\nThis will:\n• Keep your stalls (they become community-owned)\n• Remove your name from them\n• Delete your account permanently\n\nThis cannot be undone.')) {
+                onDeleteAccount();
+              }
+            }}
+            className="w-full bg-red-50 text-red-600 py-3 rounded-lg font-semibold hover:bg-red-100 transition"
+          >
+            Delete Account
+          </button>
+        </div>
+
+        <div className="text-center text-sm text-gray-500 pb-4">
+          <p>Version 0.2 Beta</p>
+          <p className="mt-1">Need help? Contact developer</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Edit Stall Modal
+function EditStallModal({ stall, onClose, onSave }) {
+  const [photo, setPhoto] = useState(stall.photo);
+  const [rating, setRating] = useState(stall.rating);
+  const [description, setDescription] = useState(stall.description || '');
+  const [name, setName] = useState(stall.name || '');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handlePhotoCapture = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setPhoto(e.target.result);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleSubmit = async () => {
+    if (!rating) {
+      alert('Please select a rating!');
+      return;
+    }
+
+    setIsSubmitting(true);
+    
+    try {
+      await onSave({
+        ...stall,
+        photo,
+        rating,
+        description,
+        name: name || 'Chai Stall'
+      });
+    } catch (error) {
+      console.error('Error updating stall:', error);
+      alert('Failed to update stall. Please try again.');
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-end">
+      <div className="bg-white w-full rounded-t-3xl max-h-[90vh] overflow-y-auto">
+        <div className="sticky top-0 bg-white px-4 py-4 flex items-center justify-between border-b">
+          <h2 className="text-xl font-bold">Edit Stall</h2>
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full">
+            <X size={24} />
+          </button>
+        </div>
+
+        <div className="p-6 space-y-6">
+          {/* Photo */}
+          <div className="relative">
+            <img src={photo} alt="Chai stall" className="w-full h-48 object-cover rounded-lg" />
+            <label 
+              htmlFor="photo-input-edit"
+              className="absolute top-2 right-2 bg-white p-2 rounded-full shadow-lg cursor-pointer active:bg-gray-100"
+            >
+              <Camera size={20} />
+            </label>
+            <input
+              id="photo-input-edit"
+              type="file"
+              accept="image/*"
+              onChange={handlePhotoCapture}
+              className="hidden"
+            />
+          </div>
+
+          {/* Name */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Stall Name
+            </label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g., Sharma Ji Chai"
+              maxLength="50"
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+            />
+          </div>
+
+          {/* Rating */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-3">
+              How was the chai?
+            </label>
+            <div className="grid grid-cols-3 gap-3">
+              {['Accha', 'Thik-Thak', 'Nahi'].map((r) => (
+                <button
+                  key={r}
+                  type="button"
+                  onClick={() => setRating(r)}
+                  className={`py-3 rounded-lg font-semibold transition ${
+                    rating === r
+                      ? r === 'Accha' ? 'bg-green-500 text-white' :
+                        r === 'Thik-Thak' ? 'bg-yellow-500 text-white' :
+                        'bg-red-500 text-white'
+                      : 'bg-gray-100 text-gray-700 active:bg-gray-200'
+                  }`}
+                >
+                  {r}!
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Description */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Description (optional)
+            </label>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Best cutting chai near the station..."
+              maxLength="150"
+              rows="3"
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent resize-none"
+            />
+            <p className="text-xs text-gray-500 mt-1">{description.length}/150</p>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={!rating || isSubmitting}
+            className="w-full bg-amber-600 text-white py-4 rounded-lg font-semibold active:bg-amber-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isSubmitting ? 'Saving...' : 'Save Changes'}
+          </button>
         </div>
       </div>
     </div>

@@ -1,4 +1,4 @@
-import { collection, addDoc, getDocs, query, orderBy, limit } from 'firebase/firestore';
+import { collection, addDoc, getDocs, query, orderBy, limit, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db } from './firebase';
 
 // Collection reference
@@ -38,3 +38,30 @@ export const getStalls = async () => {
     return [];
   }
 };
+
+// Update a stall
+export async function updateStall(stallId, updates) {
+  try {
+    const stallRef = doc(db, 'stalls', stallId);
+    await updateDoc(stallRef, {
+      ...updates,
+      updatedAt: new Date()
+    });
+    return true;
+  } catch (error) {
+    console.error('Error updating stall:', error);
+    throw error;
+  }
+}
+
+// Delete a stall
+export async function deleteStall(stallId) {
+  try {
+    const stallRef = doc(db, 'stalls', stallId);
+    await deleteDoc(stallRef);
+    return true;
+  } catch (error) {
+    console.error('Error deleting stall:', error);
+    throw error;
+  }
+}
