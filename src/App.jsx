@@ -78,8 +78,9 @@ useEffect(() => {
         });
       },
       (error) => {
-        console.error('Location permission denied:', error);
-        alert('Location access is required to use Accha Chai. Please enable location in your browser settings.');
+        console.error('Location error:', error);
+        // Browser will show native permission dialog
+        // If user denies, we just log it and continue without location
       },
       {
         enableHighAccuracy: true,
@@ -88,7 +89,7 @@ useEffect(() => {
       }
     );
   } else {
-    alert('Location services are not supported by your browser.');
+    console.warn('Geolocation not supported by browser');
   }
 
     // Load stalls from Firestore
@@ -376,7 +377,7 @@ useEffect(() => {
                 description: updatedStall.description,
                 name: updatedStall.name
               });
-              
+
               // Update local state
               setStalls(stalls.map(s => s.id === updatedStall.id ? updatedStall : s));
               setEditingStall(null);
@@ -1365,3 +1366,4 @@ function ComingSoonScreen({ title, icon }) {
     </div>
   );
 }
+
