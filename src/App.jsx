@@ -956,9 +956,10 @@ function PinPlacementScreen({ onConfirm, onCancel, userLocation }) {
 
 // Profile Page Component
 function ProfilePage({ user, stalls, savedStallIds, onEditStall, onDeleteStall, onSignOut, onDeleteAccount }) {
+  const [showSupportModal, setShowSupportModal] = useState(false);
   const userStalls = stalls.filter(stall => stall.addedBy === user.uid);
   const savedStalls = stalls.filter(stall => savedStallIds?.includes(stall.id));
-  
+
   const stallCounts = {
     total: userStalls.length,
     accha: userStalls.filter(s => s.rating === 'Accha').length,
@@ -1143,17 +1144,15 @@ function ProfilePage({ user, stalls, savedStallIds, onEditStall, onDeleteStall, 
           <p className="text-sm text-gray-700 mb-4">
             Help keep this project running and ad-free!
           </p>
-          <div className="space-y-2">
-            <button
-              onClick={() => alert('Thank you for your support! ❤️\n\nDonation feature coming soon.')}
-              className="w-full bg-amber-600 text-white py-3 rounded-lg font-semibold hover:bg-amber-700 transition"
-            >
-              ☕ Buy Me a Chai
-            </button>
-            <p className="text-xs text-center text-gray-600">
-              Built with ❤️ in India
-            </p>
-          </div>
+          <button
+            onClick={() => setShowSupportModal(true)}
+            className="w-full bg-amber-600 text-white py-3 rounded-lg font-semibold hover:bg-amber-700 transition"
+          >
+            Support This Project
+          </button>
+          <p className="text-xs text-center text-gray-600 mt-3">
+            Built with ❤️ in India
+          </p>
         </div>
 
         {/* Account Actions */}
@@ -1193,6 +1192,11 @@ function ProfilePage({ user, stalls, savedStallIds, onEditStall, onDeleteStall, 
           </p>
         </div>
       </div>
+
+      {/* Support Modal */}
+      {showSupportModal && (
+        <SupportModal onClose={() => setShowSupportModal(false)} />
+      )}
     </div>
   );
 }
@@ -1370,6 +1374,110 @@ function ComingSoonScreen({ title, icon }) {
         <p className="text-sm text-amber-700 pt-8">
           Stay tuned! ☕
         </p>
+      </div>
+    </div>
+  );
+}
+
+// Support Modal
+function SupportModal({ onClose }) {
+  const targetAmount = 50000; // ₹50,000
+  const contributedAmount = 12500; // ₹12,500
+  const progressPercentage = (contributedAmount / targetAmount) * 100;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-6">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+        <div className="sticky top-0 bg-white px-6 py-4 flex items-center justify-between border-b">
+          <h2 className="text-xl font-bold text-gray-800">Support Accha Chai</h2>
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full">
+            <X size={24} />
+          </button>
+        </div>
+
+        <div className="p-6 space-y-6">
+          {/* Funding Progress */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium text-gray-700">Funding Progress</span>
+              <span className="text-sm font-semibold text-amber-600">{progressPercentage.toFixed(0)}%</span>
+            </div>
+            <div className="w-full bg-gray-200 rounded-full h-3 mb-3">
+              <div
+                className="bg-gradient-to-r from-amber-500 to-orange-500 h-3 rounded-full transition-all duration-300"
+                style={{ width: `${progressPercentage}%` }}
+              ></div>
+            </div>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-gray-600">Raised: <span className="font-semibold text-gray-800">₹{contributedAmount.toLocaleString('en-IN')}</span></span>
+              <span className="text-gray-600">Goal: <span className="font-semibold text-gray-800">₹{targetAmount.toLocaleString('en-IN')}</span></span>
+            </div>
+          </div>
+
+          {/* What We'll Build */}
+          <div>
+            <h3 className="font-semibold text-gray-800 mb-3">What Your Support Enables</h3>
+            <div className="space-y-3">
+              <div className="flex gap-3">
+                <div className="flex-shrink-0 w-8 h-8 bg-amber-100 rounded-full flex items-center justify-center">
+                  <span className="text-lg">☁️</span>
+                </div>
+                <div>
+                  <p className="font-medium text-gray-800">Server & Hosting</p>
+                  <p className="text-sm text-gray-600">Keep the app fast and reliable for everyone</p>
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                <div className="flex-shrink-0 w-8 h-8 bg-amber-100 rounded-full flex items-center justify-center">
+                  <span className="text-lg">🗺️</span>
+                </div>
+                <div>
+                  <p className="font-medium text-gray-800">Google Maps API</p>
+                  <p className="text-sm text-gray-600">Monthly costs for location services</p>
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                <div className="flex-shrink-0 w-8 h-8 bg-amber-100 rounded-full flex items-center justify-center">
+                  <span className="text-lg">🖼️</span>
+                </div>
+                <div>
+                  <p className="font-medium text-gray-800">Image Storage</p>
+                  <p className="text-sm text-gray-600">Store all chai stall photos securely</p>
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                <div className="flex-shrink-0 w-8 h-8 bg-amber-100 rounded-full flex items-center justify-center">
+                  <span className="text-lg">✨</span>
+                </div>
+                <div>
+                  <p className="font-medium text-gray-800">New Features</p>
+                  <p className="text-sm text-gray-600">Explore feed, search, filters, and more</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Call to Action */}
+          <div className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-lg p-4">
+            <p className="text-sm text-gray-700 text-center mb-3">
+              Want to contribute? Contact the developer to learn about sponsorship options.
+            </p>
+            <a
+              href="mailto:nerdunsure+ping@gmail.com?subject=Support%20Accha%20Chai&body=Hi!%20I'd%20like%20to%20support%20the%20Accha%20Chai%20project.%0A%0A"
+              className="block w-full bg-amber-600 text-white py-3 rounded-lg font-semibold hover:bg-amber-700 transition text-center"
+              onClick={onClose}
+            >
+              Get in Touch
+            </a>
+          </div>
+
+          <p className="text-xs text-center text-gray-500">
+            This is a community project. No ads, no premium features. Just authentic chai discovery.
+          </p>
+        </div>
       </div>
     </div>
   );
