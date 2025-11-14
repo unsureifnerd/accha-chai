@@ -1181,7 +1181,7 @@ function ProfilePage({ user, stalls, savedStallIds, onEditStall, onDeleteStall, 
         </div>
 
         <div className="text-center text-sm text-gray-500 pb-4">
-          <p>Version 0.2 Beta</p>
+          <p>Version 0.3 Beta</p>
           <p className="mt-1">
             Need help?{' '}
             <a
