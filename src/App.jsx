@@ -957,6 +957,7 @@ function PinPlacementScreen({ onConfirm, onCancel, userLocation }) {
 // Profile Page Component
 function ProfilePage({ user, stalls, savedStallIds, onEditStall, onDeleteStall, onSignOut, onDeleteAccount }) {
   const [showSupportModal, setShowSupportModal] = useState(false);
+  const [currentView, setCurrentView] = useState('main'); // main, addedStalls, savedStalls
   const userStalls = stalls.filter(stall => stall.addedBy === user.uid);
   const savedStalls = stalls.filter(stall => savedStallIds?.includes(stall.id));
 
@@ -966,6 +967,27 @@ function ProfilePage({ user, stalls, savedStallIds, onEditStall, onDeleteStall, 
     thikThak: userStalls.filter(s => s.rating === 'Thik-Thak').length,
     nahi: userStalls.filter(s => s.rating === 'Nahi').length
   };
+
+  // Show different views based on currentView state
+  if (currentView === 'addedStalls') {
+    return (
+      <AddedStallsView
+        stalls={userStalls}
+        onBack={() => setCurrentView('main')}
+        onEditStall={onEditStall}
+        onDeleteStall={onDeleteStall}
+      />
+    );
+  }
+
+  if (currentView === 'savedStalls') {
+    return (
+      <SavedStallsView
+        stalls={savedStalls}
+        onBack={() => setCurrentView('main')}
+      />
+    );
+  }
 
   return (
     <div className="h-full w-full overflow-y-auto bg-gray-50">
@@ -1006,136 +1028,45 @@ function ProfilePage({ user, stalls, savedStallIds, onEditStall, onDeleteStall, 
           </div>
         </div>
 
-        {/* My Stalls */}
-        <div className="bg-white rounded-2xl shadow-sm p-6">
-          <h3 className="text-xl font-bold text-gray-900 mb-4">My Stalls ({userStalls.length})</h3>
-          
-          {userStalls.length === 0 ? (
-            <div className="text-center py-12">
-              <div className="text-6xl mb-3">☕</div>
-              <p className="text-gray-600">You haven't added any stalls yet</p>
-              <p className="text-sm text-gray-500 mt-2">Click the + button to add your first stall!</p>
+        {/* Navigation Items */}
+        <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+          {/* View Added Stalls */}
+          <button
+            onClick={() => setCurrentView('addedStalls')}
+            className="w-full px-6 py-4 flex items-center justify-between hover:bg-gray-50 transition border-b border-gray-100"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center">
+                <span className="text-lg">☕</span>
+              </div>
+              <div className="text-left">
+                <p className="font-semibold text-gray-900">View Added Stalls</p>
+                <p className="text-sm text-gray-600">{userStalls.length} stall{userStalls.length !== 1 ? 's' : ''}</p>
+              </div>
             </div>
-          ) : (
-            <div className="space-y-4">
-              {userStalls.map((stall) => {
-                const isOld = (Date.now() - stall.createdAt?.toMillis?.()) > 7 * 24 * 60 * 60 * 1000; // 7 days
-                const isCommunityOwned = isOld; // Simple rule for now
-                
-                return (
-                  <div key={stall.id} className="border border-gray-200 rounded-xl p-4">
-                    <div className="flex gap-3">
-                      <img 
-                        src={stall.photo} 
-                        alt={stall.name || 'Chai stall'}
-                        className="w-20 h-20 object-cover rounded-lg"
-                      />
-                      <div className="flex-1 min-w-0">
-                        <h4 className="font-semibold text-gray-900 truncate">
-                          {stall.name || 'Chai Stall'}
-                        </h4>
-                        <p className="text-sm text-gray-600 truncate">{stall.description || 'No description'}</p>
-                        <div className="flex items-center gap-2 mt-1">
-                          <span className={`text-sm font-medium ${
-                            stall.rating === 'Accha' ? 'text-green-600' :
-                            stall.rating === 'Thik-Thak' ? 'text-yellow-600' :
-                            'text-red-600'
-                          }`}>
-                            {stall.rating}!
-                          </span>
-                          {isCommunityOwned && (
-                            <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">
-                              Community-owned
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                    
-                    <div className="flex gap-2 mt-3">
-                      <button
-                        onClick={() => onEditStall(stall)}
-                        className="flex-1 bg-amber-100 text-amber-700 py-2 rounded-lg font-medium text-sm hover:bg-amber-200 transition"
-                      >
-                        Edit
-                      </button>
-                      {!isCommunityOwned ? (
-                        <button
-                          onClick={() => {
-                            if (window.confirm('Delete this stall? This cannot be undone.')) {
-                              onDeleteStall(stall.id);
-                            }
-                          }}
-                          className="flex-1 bg-red-100 text-red-700 py-2 rounded-lg font-medium text-sm hover:bg-red-200 transition"
-                        >
-                          Delete
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => alert('This stall is community-owned and cannot be deleted. You can report issues if the stall is closed.')}
-                          className="flex-1 bg-gray-100 text-gray-500 py-2 rounded-lg font-medium text-sm"
-                          disabled
-                        >
-                          Can't Delete
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
+            <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
 
-        {/* Saved Stalls */}
-        <div className="bg-white rounded-2xl shadow-sm p-6">
-          <h3 className="text-xl font-bold text-gray-900 mb-4">Saved Stalls ({savedStalls.length})</h3>
-          
-          {savedStalls.length === 0 ? (
-            <div className="text-center py-12">
-              <div className="text-6xl mb-3">❤️</div>
-              <p className="text-gray-600">No saved stalls yet</p>
-              <p className="text-sm text-gray-500 mt-2">Tap the heart icon on any stall to save it!</p>
+          {/* Saved Stalls */}
+          <button
+            onClick={() => setCurrentView('savedStalls')}
+            className="w-full px-6 py-4 flex items-center justify-between hover:bg-gray-50 transition"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
+                <span className="text-lg">❤️</span>
+              </div>
+              <div className="text-left">
+                <p className="font-semibold text-gray-900">Saved Stalls</p>
+                <p className="text-sm text-gray-600">{savedStalls.length} stall{savedStalls.length !== 1 ? 's' : ''}</p>
+              </div>
             </div>
-          ) : (
-            <div className="space-y-4">
-              {savedStalls.map((stall) => (
-                <div key={stall.id} className="border border-gray-200 rounded-xl p-4">
-                  <div className="flex gap-3">
-                    <img 
-                      src={stall.photo} 
-                      alt={stall.name || 'Chai stall'}
-                      className="w-20 h-20 object-cover rounded-lg"
-                    />
-                    <div className="flex-1 min-w-0">
-                      <h4 className="font-semibold text-gray-900 truncate">
-                        {stall.name || 'Chai Stall'}
-                      </h4>
-                      <p className="text-sm text-gray-600 truncate">{stall.description || 'No description'}</p>
-                      <span className={`text-sm font-medium ${
-                        stall.rating === 'Accha' ? 'text-green-600' :
-                        stall.rating === 'Thik-Thak' ? 'text-yellow-600' :
-                        'text-red-600'
-                      }`}>
-                        {stall.rating}!
-                      </span>
-                    </div>
-                  </div>
-                  
-                  <button
-                    onClick={() => {
-                      const { lat, lng } = stall.location;
-                      window.open(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`, '_blank');
-                    }}
-                    className="w-full mt-3 bg-blue-500 text-white py-2 rounded-lg font-medium text-sm hover:bg-blue-600 transition flex items-center justify-center gap-2"
-                  >
-                    <Navigation size={16} />
-                    Get Directions
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
+            <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
         </div>
 
         {/* Support Section */}
@@ -1374,6 +1305,178 @@ function ComingSoonScreen({ title, icon }) {
         <p className="text-sm text-amber-700 pt-8">
           Stay tuned! ☕
         </p>
+      </div>
+    </div>
+  );
+}
+
+// Added Stalls View
+function AddedStallsView({ stalls, onBack, onEditStall, onDeleteStall }) {
+  return (
+    <div className="h-full w-full overflow-y-auto bg-gray-50">
+      <div className="max-w-2xl mx-auto pb-24">
+        {/* Header */}
+        <div className="sticky top-0 bg-white shadow-sm px-4 py-3 flex items-center gap-3 z-10">
+          <button
+            onClick={onBack}
+            className="p-2 hover:bg-gray-100 rounded-full transition"
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+          </button>
+          <h2 className="text-xl font-bold text-gray-800">Added Stalls</h2>
+        </div>
+
+        {/* Content */}
+        <div className="p-6">
+          {stalls.length === 0 ? (
+            <div className="text-center py-20">
+              <div className="text-6xl mb-3">☕</div>
+              <p className="text-gray-600 font-medium">You haven't added any stalls yet</p>
+              <p className="text-sm text-gray-500 mt-2">Click the + button to add your first stall!</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {stalls.map((stall) => {
+                const isOld = (Date.now() - stall.createdAt?.toMillis?.()) > 7 * 24 * 60 * 60 * 1000;
+                const isCommunityOwned = isOld;
+
+                return (
+                  <div key={stall.id} className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+                    <div className="flex gap-3">
+                      <img
+                        src={stall.photo}
+                        alt={stall.name || 'Chai stall'}
+                        className="w-20 h-20 object-cover rounded-lg"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <h4 className="font-semibold text-gray-900 truncate">
+                          {stall.name || 'Chai Stall'}
+                        </h4>
+                        <p className="text-sm text-gray-600 truncate">{stall.description || 'No description'}</p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className={`text-sm font-medium ${
+                            stall.rating === 'Accha' ? 'text-green-600' :
+                            stall.rating === 'Thik-Thak' ? 'text-yellow-600' :
+                            'text-red-600'
+                          }`}>
+                            {stall.rating}!
+                          </span>
+                          {isCommunityOwned && (
+                            <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">
+                              Community-owned
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-2 mt-3">
+                      <button
+                        onClick={() => onEditStall(stall)}
+                        className="flex-1 bg-amber-100 text-amber-700 py-2 rounded-lg font-medium text-sm hover:bg-amber-200 transition"
+                      >
+                        Edit
+                      </button>
+                      {!isCommunityOwned ? (
+                        <button
+                          onClick={() => {
+                            if (window.confirm('Delete this stall? This cannot be undone.')) {
+                              onDeleteStall(stall.id);
+                            }
+                          }}
+                          className="flex-1 bg-red-100 text-red-700 py-2 rounded-lg font-medium text-sm hover:bg-red-200 transition"
+                        >
+                          Delete
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => alert('This stall is community-owned and cannot be deleted. You can report issues if the stall is closed.')}
+                          className="flex-1 bg-gray-100 text-gray-500 py-2 rounded-lg font-medium text-sm"
+                          disabled
+                        >
+                          Can't Delete
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Saved Stalls View
+function SavedStallsView({ stalls, onBack }) {
+  return (
+    <div className="h-full w-full overflow-y-auto bg-gray-50">
+      <div className="max-w-2xl mx-auto pb-24">
+        {/* Header */}
+        <div className="sticky top-0 bg-white shadow-sm px-4 py-3 flex items-center gap-3 z-10">
+          <button
+            onClick={onBack}
+            className="p-2 hover:bg-gray-100 rounded-full transition"
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+          </button>
+          <h2 className="text-xl font-bold text-gray-800">Saved Stalls</h2>
+        </div>
+
+        {/* Content */}
+        <div className="p-6">
+          {stalls.length === 0 ? (
+            <div className="text-center py-20">
+              <div className="text-6xl mb-3">❤️</div>
+              <p className="text-gray-600 font-medium">No saved stalls yet</p>
+              <p className="text-sm text-gray-500 mt-2">Tap the heart icon on any stall to save it!</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {stalls.map((stall) => (
+                <div key={stall.id} className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+                  <div className="flex gap-3">
+                    <img
+                      src={stall.photo}
+                      alt={stall.name || 'Chai stall'}
+                      className="w-20 h-20 object-cover rounded-lg"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <h4 className="font-semibold text-gray-900 truncate">
+                        {stall.name || 'Chai Stall'}
+                      </h4>
+                      <p className="text-sm text-gray-600 truncate">{stall.description || 'No description'}</p>
+                      <span className={`text-sm font-medium ${
+                        stall.rating === 'Accha' ? 'text-green-600' :
+                        stall.rating === 'Thik-Thak' ? 'text-yellow-600' :
+                        'text-red-600'
+                      }`}>
+                        {stall.rating}!
+                      </span>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      const { lat, lng } = stall.location;
+                      window.open(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`, '_blank');
+                    }}
+                    className="w-full mt-3 bg-blue-500 text-white py-2 rounded-lg font-medium text-sm hover:bg-blue-600 transition flex items-center justify-center gap-2"
+                  >
+                    <Navigation size={16} />
+                    Get Directions
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
