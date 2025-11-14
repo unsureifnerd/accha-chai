@@ -1,4 +1,4 @@
-import { collection, addDoc, getDocs, query, orderBy, limit, doc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { collection, addDoc, getDocs, query, orderBy, limit, doc, updateDoc, deleteDoc, setDoc, getDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { db } from './firebase';
 
 // Collection reference
@@ -63,5 +63,61 @@ export async function deleteStall(stallId) {
   } catch (error) {
     console.error('Error deleting stall:', error);
     throw error;
+  }
+}
+
+// Save a stall to user's favorites
+export async function saveStall(userId, stallId) {
+  try {
+    const userRef = doc(db, 'users', userId);
+    const userDoc = await getDoc(userRef);
+    
+    if (!userDoc.exists()) {
+      // Create user doc if it doesn't exist
+      await setDoc(userRef, {
+        savedStalls: [stallId],
+        createdAt: new Date()
+      });
+    } else {
+      // Add to existing array
+      await updateDoc(userRef, {
+        savedStalls: arrayUnion(stallId)
+      });
+    }
+    return true;
+  } catch (error) {
+    console.error('Error saving stall:', error);
+    throw error;
+  }
+}
+
+// Unsave a stall from user's favorites
+export async function unsaveStall(userId, stallId) {
+  try {
+    const userRef = doc(db, 'users', userId);
+    await updateDoc(userRef, {
+      savedStalls: arrayRemove(stallId)
+    });
+    return true;
+  } catch (error) {
+    console.error('Error unsaving stall:', error);
+    throw error;
+  }
+}
+
+// Get user's saved stalls
+export async function getSavedStalls(userId) {
+  try {
+    const userRef = doc(db, 'users', userId);
+    const userDoc = await getDoc(userRef);
+    
+    if (!userDoc.exists()) {
+      return [];
+    }
+    
+    return userDoc.data().savedStalls || [];
+  } catch (error) {
+    console.error('Error getting saved stalls:', error);
+    return [];
   }
 }

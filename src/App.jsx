@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Camera, MapPin, Navigation, Star, Plus, X, LogOut, Phone } from 'lucide-react';
 import GoogleMapComponent from './GoogleMap';
-import { addStall as saveStallToDb, getStalls, deleteStall, updateStall } from './firestore';
+import { addStall as saveStallToDb, getStalls, deleteStall, updateStall, saveStall, unsaveStall, getSavedStalls } from './firestore';
 import { auth, googleProvider } from './firebase';
 import { signInWithPopup, signOut, onAuthStateChanged, deleteUser } from 'firebase/auth';
 import { collection, query, where, getDocs, doc, updateDoc, deleteDoc } from 'firebase/firestore';
@@ -29,6 +29,7 @@ export default function AcchaChai() {
   const [showAddStall, setShowAddStall] = useState(false);
   const [selectedStall, setSelectedStall] = useState(null);
   const [stalls, setStalls] = useState([]);
+  const [savedStallIds, setSavedStallIds] = useState([]);
   const [userLocation, setUserLocation] = useState(null);
   const [activeTab, setActiveTab] = useState('home');
   const [editingStall, setEditingStall] = useState(null);
@@ -52,6 +53,10 @@ export default function AcchaChai() {
           setLoading(false);
           return;
         }
+        
+        // Load user's saved stalls
+        const saved = await getSavedStalls(currentUser.uid);
+        setSavedStallIds(saved);
       }
       
       setUser(currentUser);
@@ -163,6 +168,22 @@ useEffect(() => {
             <StallDetail 
               stall={selectedStall}
               onClose={() => setSelectedStall(null)}
+              savedStallIds={savedStallIds}
+              onToggleSave={async (stallId) => {
+                const isSaved = savedStallIds.includes(stallId);
+                try {
+                  if (isSaved) {
+                    await unsaveStall(user.uid, stallId);
+                    setSavedStallIds(savedStallIds.filter(id => id !== stallId));
+                  } else {
+                    await saveStall(user.uid, stallId);
+                    setSavedStallIds([...savedStallIds, stallId]);
+                  }
+                } catch (error) {
+                  console.error('Error toggling save:', error);
+                  alert('Failed to save stall. Please try again.');
+                }
+              }}
             />
           )}
         </div>
@@ -177,6 +198,7 @@ useEffect(() => {
           <ProfilePage
             user={user}
             stalls={stalls}
+            savedStallIds={savedStallIds}
             onEditStall={setEditingStall}
             onDeleteStall={async (stallId) => {
               try {
@@ -294,6 +316,7 @@ useEffect(() => {
           }}
           onSubmit={async (newStall) => {
             console.log('Submitting stall:', {
+              name: newStall.name,
               hasPhoto: !!newStall.photo,
               photoSize: newStall.photo?.length,
               rating: newStall.rating,
@@ -481,11 +504,26 @@ function MapView({ stalls, userLocation, onStallClick }) {
 }
 
 // Stall Detail Bottom Sheet
-function StallDetail({ stall, onClose }) {
+function StallDetail({ stall, onClose, savedStallIds, onToggleSave }) {
+  const isSaved = savedStallIds?.includes(stall.id);
+  
   return (
     <div className="absolute inset-x-0 bottom-0 bg-white rounded-t-3xl shadow-2xl max-h-[70vh] overflow-y-auto">
       <div className="sticky top-0 bg-white px-4 py-3 flex items-center justify-between border-b">
-        <div className="w-8"></div>
+        <button 
+          onClick={() => onToggleSave(stall.id)}
+          className="p-2 hover:bg-gray-100 rounded-full transition"
+        >
+          {isSaved ? (
+            <svg className="w-6 h-6 text-red-500 fill-current" viewBox="0 0 24 24">
+              <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+            </svg>
+          ) : (
+            <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/>
+            </svg>
+          )}
+        </button>
         <div className="w-12 h-1 bg-gray-300 rounded-full"></div>
         <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-full">
           <X size={24} />
@@ -550,6 +588,7 @@ function AddStallModal({ userLocation, onClose, onSubmit }) {
   const [photo, setPhoto] = useState(null);
   const [rating, setRating] = useState('');
   const [description, setDescription] = useState('');
+  const [name, setName] = useState('');
 
   const handlePhotoCapture = (e) => {
     const file = e.target.files[0];
@@ -612,7 +651,7 @@ function AddStallModal({ userLocation, onClose, onSubmit }) {
       location: userLocation,
       addedBy: auth.currentUser?.uid || 'anonymous',
       ratings: 0,
-      name: 'New Chai Stall'
+      name: name || 'New Chai Stall'
     });
   };
 
@@ -696,6 +735,23 @@ function AddStallModal({ userLocation, onClose, onSubmit }) {
                   className="hidden"
                 />
               </div>
+
+              {/* Stall Name */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Stall Name
+                </label>
+                <input
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="e.g., Sharma Ji Chai, Raju Tea Stall"
+                  maxLength="50"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                />
+                <p className="text-xs text-gray-500 mt-1">{name.length}/50 characters</p>
+              </div>
+
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-3">
@@ -840,8 +896,9 @@ function PinPlacementScreen({ onConfirm, onCancel, userLocation }) {
 }
 
 // Profile Page Component
-function ProfilePage({ user, stalls, onEditStall, onDeleteStall, onSignOut, onDeleteAccount }) {
+function ProfilePage({ user, stalls, savedStallIds, onEditStall, onDeleteStall, onSignOut, onDeleteAccount }) {
   const userStalls = stalls.filter(stall => stall.addedBy === user.uid);
+  const savedStalls = stalls.filter(stall => savedStallIds?.includes(stall.id));
   
   const stallCounts = {
     total: userStalls.length,
@@ -966,6 +1023,57 @@ function ProfilePage({ user, stalls, onEditStall, onDeleteStall, onSignOut, onDe
                   </div>
                 );
               })}
+            </div>
+          )}
+        </div>
+
+        {/* Saved Stalls */}
+        <div className="bg-white rounded-2xl shadow-sm p-6">
+          <h3 className="text-xl font-bold text-gray-900 mb-4">Saved Stalls ({savedStalls.length})</h3>
+          
+          {savedStalls.length === 0 ? (
+            <div className="text-center py-12">
+              <div className="text-6xl mb-3">❤️</div>
+              <p className="text-gray-600">No saved stalls yet</p>
+              <p className="text-sm text-gray-500 mt-2">Tap the heart icon on any stall to save it!</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {savedStalls.map((stall) => (
+                <div key={stall.id} className="border border-gray-200 rounded-xl p-4">
+                  <div className="flex gap-3">
+                    <img 
+                      src={stall.photo} 
+                      alt={stall.name || 'Chai stall'}
+                      className="w-20 h-20 object-cover rounded-lg"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <h4 className="font-semibold text-gray-900 truncate">
+                        {stall.name || 'Chai Stall'}
+                      </h4>
+                      <p className="text-sm text-gray-600 truncate">{stall.description || 'No description'}</p>
+                      <span className={`text-sm font-medium ${
+                        stall.rating === 'Accha' ? 'text-green-600' :
+                        stall.rating === 'Thik-Thak' ? 'text-yellow-600' :
+                        'text-red-600'
+                      }`}>
+                        {stall.rating}!
+                      </span>
+                    </div>
+                  </div>
+                  
+                  <button
+                    onClick={() => {
+                      const { lat, lng } = stall.location;
+                      window.open(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`, '_blank');
+                    }}
+                    className="w-full mt-3 bg-blue-500 text-white py-2 rounded-lg font-medium text-sm hover:bg-blue-600 transition flex items-center justify-center gap-2"
+                  >
+                    <Navigation size={16} />
+                    Get Directions
+                  </button>
+                </div>
+              ))}
             </div>
           )}
         </div>
