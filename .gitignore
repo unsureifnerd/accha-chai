@@ -36,3 +36,6 @@ Thumbs.db
 .firebase/
 .firebaserc
 firebase-debug.log
+
+#Console message
+console-message.txt
