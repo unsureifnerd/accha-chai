@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Camera, MapPin, Navigation, Star, Plus, X, LogOut, Phone } from 'lucide-react';
+import { Camera, MapPin, Navigation, Star, Plus, X, LogOut, Phone, Share2 } from 'lucide-react';
 import GoogleMapComponent from './GoogleMap';
 import { addStall as saveStallToDb, getStalls, deleteStall, updateStall, saveStall, unsaveStall, getSavedStalls } from './firestore';
 import { auth, googleProvider } from './firebase';
@@ -103,6 +103,24 @@ useEffect(() => {
       console.error('Error loading stalls:', error);
     }
   };
+
+  // Handle deep linking from shared URLs
+  useEffect(() => {
+    if (stalls.length === 0 || !user) return;
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const sharedStallId = urlParams.get('stall');
+
+    if (sharedStallId) {
+      const stall = stalls.find(s => s.id === sharedStallId);
+      if (stall) {
+        setSelectedStall(stall);
+        setActiveTab('home'); // Switch to home tab to show the stall
+        // Clean URL without reloading
+        window.history.replaceState({}, '', window.location.pathname);
+      }
+    }
+  }, [stalls, user]);
 
   const handleSignOut = async () => {
     try {
@@ -506,24 +524,64 @@ function MapView({ stalls, userLocation, onStallClick }) {
 // Stall Detail Bottom Sheet
 function StallDetail({ stall, onClose, savedStallIds, onToggleSave }) {
   const isSaved = savedStallIds?.includes(stall.id);
-  
+
+  const handleShare = async () => {
+    const shareUrl = `${window.location.origin}?stall=${stall.id}`;
+    const shareData = {
+      title: `${stall.name} - Accha Chai`,
+      text: `Check out this chai stall: ${stall.name} (${stall.rating}!)`,
+      url: shareUrl
+    };
+
+    try {
+      // Check if Web Share API is supported
+      if (navigator.share && navigator.canShare && navigator.canShare(shareData)) {
+        await navigator.share(shareData);
+      } else {
+        // Fallback: Copy to clipboard
+        await navigator.clipboard.writeText(shareUrl);
+        alert('Link copied to clipboard!');
+      }
+    } catch (error) {
+      // User cancelled share or error occurred
+      if (error.name !== 'AbortError') {
+        console.error('Error sharing:', error);
+        // Try clipboard as final fallback
+        try {
+          await navigator.clipboard.writeText(shareUrl);
+          alert('Link copied to clipboard!');
+        } catch (clipboardError) {
+          alert('Unable to share. Please copy this link:\n' + shareUrl);
+        }
+      }
+    }
+  };
+
   return (
     <div className="absolute inset-x-0 bottom-0 bg-white rounded-t-3xl shadow-2xl max-h-[70vh] overflow-y-auto">
       <div className="sticky top-0 bg-white px-4 py-3 flex items-center justify-between border-b">
-        <button 
-          onClick={() => onToggleSave(stall.id)}
-          className="p-2 hover:bg-gray-100 rounded-full transition"
-        >
-          {isSaved ? (
-            <svg className="w-6 h-6 text-red-500 fill-current" viewBox="0 0 24 24">
-              <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
-            </svg>
-          ) : (
-            <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/>
-            </svg>
-          )}
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => onToggleSave(stall.id)}
+            className="p-2 hover:bg-gray-100 rounded-full transition"
+          >
+            {isSaved ? (
+              <svg className="w-6 h-6 text-red-500 fill-current" viewBox="0 0 24 24">
+                <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+              </svg>
+            ) : (
+              <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/>
+              </svg>
+            )}
+          </button>
+          <button
+            onClick={handleShare}
+            className="p-2 hover:bg-gray-100 rounded-full transition"
+          >
+            <Share2 size={20} className="text-gray-600" />
+          </button>
+        </div>
         <div className="w-12 h-1 bg-gray-300 rounded-full"></div>
         <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-full">
           <X size={24} />
