@@ -40,3 +40,6 @@ firestore-rules.txt
 
 #Console message
 console-message.txt
+
+# AI context files
+CLAUDE.md
