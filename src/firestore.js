@@ -110,14 +110,66 @@ export async function getSavedStalls(userId) {
   try {
     const userRef = doc(db, 'users', userId);
     const userDoc = await getDoc(userRef);
-    
+
     if (!userDoc.exists()) {
       return [];
     }
-    
+
     return userDoc.data().savedStalls || [];
   } catch (error) {
     console.error('Error getting saved stalls:', error);
     return [];
+  }
+}
+
+// Submit or update a rating for a stall
+export async function rateStall(stallId, userId, rating) {
+  try {
+    const ratingRef = doc(db, 'stalls', stallId, 'ratings', userId);
+    await setDoc(ratingRef, {
+      rating,
+      userId,
+      createdAt: new Date()
+    });
+    return true;
+  } catch (error) {
+    console.error('Error rating stall:', error);
+    throw error;
+  }
+}
+
+// Get all ratings for a stall
+export async function getStallRatings(stallId) {
+  try {
+    const ratingsCollection = collection(db, 'stalls', stallId, 'ratings');
+    const querySnapshot = await getDocs(ratingsCollection);
+    const ratings = [];
+    querySnapshot.forEach((doc) => {
+      ratings.push({
+        id: doc.id,
+        ...doc.data()
+      });
+    });
+    return ratings;
+  } catch (error) {
+    console.error('Error getting stall ratings:', error);
+    return [];
+  }
+}
+
+// Get user's rating for a stall (if any)
+export async function getUserRating(stallId, userId) {
+  try {
+    const ratingRef = doc(db, 'stalls', stallId, 'ratings', userId);
+    const ratingDoc = await getDoc(ratingRef);
+
+    if (!ratingDoc.exists()) {
+      return null;
+    }
+
+    return ratingDoc.data().rating;
+  } catch (error) {
+    console.error('Error getting user rating:', error);
+    return null;
   }
 }

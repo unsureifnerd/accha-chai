@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Camera, MapPin, Navigation, Star, Plus, X, LogOut, Phone, Share2 } from 'lucide-react';
 import GoogleMapComponent from './GoogleMap';
-import { addStall as saveStallToDb, getStalls, deleteStall, updateStall, saveStall, unsaveStall, getSavedStalls } from './firestore';
+import { addStall as saveStallToDb, getStalls, deleteStall, updateStall, saveStall, unsaveStall, getSavedStalls, rateStall, getStallRatings, getUserRating } from './firestore';
 import { auth, googleProvider } from './firebase';
 import { signInWithPopup, signOut, onAuthStateChanged, deleteUser } from 'firebase/auth';
 import { collection, query, where, getDocs, doc, updateDoc, deleteDoc } from 'firebase/firestore';
@@ -184,10 +184,12 @@ useEffect(() => {
 
           {/* Stall Detail Bottom Sheet */}
           {selectedStall && (
-            <StallDetail 
+            <StallDetail
               stall={selectedStall}
               onClose={() => setSelectedStall(null)}
               savedStallIds={savedStallIds}
+              currentUser={user}
+              onRatingUpdate={() => loadStalls()}
               onToggleSave={async (stallId) => {
                 const isSaved = savedStallIds.includes(stallId);
                 try {
@@ -523,8 +525,35 @@ function MapView({ stalls, userLocation, onStallClick }) {
 }
 
 // Stall Detail Bottom Sheet
-function StallDetail({ stall, onClose, savedStallIds, onToggleSave }) {
+function StallDetail({ stall, onClose, savedStallIds, onToggleSave, currentUser, onRatingUpdate }) {
   const isSaved = savedStallIds?.includes(stall.id);
+  const [showRatingModal, setShowRatingModal] = useState(false);
+  const [userRating, setUserRating] = useState(null);
+  const [allRatings, setAllRatings] = useState([]);
+
+  // Load ratings when component mounts
+  useEffect(() => {
+    const loadRatings = async () => {
+      if (currentUser) {
+        const rating = await getUserRating(stall.id, currentUser.uid);
+        setUserRating(rating);
+      }
+
+      const ratings = await getStallRatings(stall.id);
+      setAllRatings(ratings);
+    };
+    loadRatings();
+  }, [stall.id, currentUser]);
+
+  // Calculate aggregate rating
+  const ratingCounts = {
+    Accha: allRatings.filter(r => r.rating === 'Accha').length,
+    'Thik-Thak': allRatings.filter(r => r.rating === 'Thik-Thak').length,
+    Nahi: allRatings.filter(r => r.rating === 'Nahi').length
+  };
+
+  const totalRatings = allRatings.length;
+  const isOwnStall = currentUser && stall.addedBy === currentUser.uid;
 
   const handleShare = async () => {
     const shareUrl = `${window.location.origin}?stall=${stall.id}`;
@@ -605,9 +634,45 @@ function StallDetail({ stall, onClose, savedStallIds, onToggleSave }) {
             {stall.rating}!
           </span>
           <span className="text-gray-600 text-sm">
-            {stall.ratings} ratings
+            {totalRatings} {totalRatings === 1 ? 'rating' : 'ratings'}
           </span>
         </div>
+
+        {/* Rating Breakdown */}
+        {totalRatings > 0 && (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-gray-700 w-20">Accha:</span>
+              <div className="flex-1 bg-gray-200 rounded-full h-2">
+                <div
+                  className="bg-green-500 h-2 rounded-full"
+                  style={{ width: `${(ratingCounts.Accha / totalRatings) * 100}%` }}
+                ></div>
+              </div>
+              <span className="text-sm text-gray-600 w-8 text-right">{ratingCounts.Accha}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-gray-700 w-20">Thik-Thak:</span>
+              <div className="flex-1 bg-gray-200 rounded-full h-2">
+                <div
+                  className="bg-yellow-500 h-2 rounded-full"
+                  style={{ width: `${(ratingCounts['Thik-Thak'] / totalRatings) * 100}%` }}
+                ></div>
+              </div>
+              <span className="text-sm text-gray-600 w-8 text-right">{ratingCounts['Thik-Thak']}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-gray-700 w-20">Nahi:</span>
+              <div className="flex-1 bg-gray-200 rounded-full h-2">
+                <div
+                  className="bg-red-500 h-2 rounded-full"
+                  style={{ width: `${(ratingCounts.Nahi / totalRatings) * 100}%` }}
+                ></div>
+              </div>
+              <span className="text-sm text-gray-600 w-8 text-right">{ratingCounts.Nahi}</span>
+            </div>
+          </div>
+        )}
 
         <div>
           <h3 className="font-bold text-lg text-gray-800 mb-2">{stall.name}</h3>
@@ -626,17 +691,44 @@ function StallDetail({ stall, onClose, savedStallIds, onToggleSave }) {
             <Navigation size={20} />
             Get Directions
           </button>
-          <button 
+          <button
             onClick={() => {
-              alert('Rating feature coming soon! For now, add your own stall with your rating ☕');
+              if (isOwnStall) {
+                alert('You cannot rate your own stall');
+              } else {
+                setShowRatingModal(true);
+              }
             }}
             className="flex items-center justify-center gap-2 bg-amber-500 text-white py-3 rounded-lg font-semibold active:bg-amber-600 transition"
           >
             <Star size={20} />
-            Rate Stall
+            {userRating ? 'Update Rating' : 'Rate Stall'}
           </button>
         </div>
       </div>
+
+      {/* Rating Modal */}
+      {showRatingModal && (
+        <RatingModal
+          stall={stall}
+          currentRating={userRating}
+          onClose={() => setShowRatingModal(false)}
+          onSubmit={async (rating) => {
+            try {
+              await rateStall(stall.id, currentUser.uid, rating);
+              setUserRating(rating);
+              // Reload ratings
+              const ratings = await getStallRatings(stall.id);
+              setAllRatings(ratings);
+              setShowRatingModal(false);
+              if (onRatingUpdate) onRatingUpdate();
+            } catch (error) {
+              console.error('Error submitting rating:', error);
+              alert('Failed to submit rating. Please try again.');
+            }
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -1273,8 +1365,76 @@ function EditStallModal({ stall, onClose, onSave }) {
   );
 }
 
+// Rating Modal
+function RatingModal({ stall, currentRating, onClose, onSubmit }) {
+  const [selectedRating, setSelectedRating] = useState(currentRating || '');
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 z-[60] flex items-center justify-center p-6">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
+        <div className="px-6 py-4 flex items-center justify-between border-b">
+          <h2 className="text-xl font-bold text-gray-800">Rate This Stall</h2>
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full">
+            <X size={24} />
+          </button>
+        </div>
+
+        <div className="p-6 space-y-6">
+          {/* Stall Info */}
+          <div className="flex items-center gap-3 pb-4 border-b">
+            <img
+              src={stall.photo}
+              alt={stall.name}
+              className="w-16 h-16 object-cover rounded-lg"
+            />
+            <div>
+              <h3 className="font-semibold text-gray-900">{stall.name}</h3>
+              <p className="text-sm text-gray-600">{stall.description || 'Chai stall'}</p>
+            </div>
+          </div>
+
+          {/* Rating Options */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-3">
+              How was the chai?
+            </label>
+            <div className="grid grid-cols-3 gap-3">
+              {['Accha', 'Thik-Thak', 'Nahi'].map((rating) => (
+                <button
+                  key={rating}
+                  type="button"
+                  onClick={() => setSelectedRating(rating)}
+                  className={`py-3 rounded-lg font-semibold transition ${
+                    selectedRating === rating
+                      ? rating === 'Accha' ? 'bg-green-500 text-white' :
+                        rating === 'Thik-Thak' ? 'bg-yellow-500 text-white' :
+                        'bg-red-500 text-white'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  {rating}!
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Submit Button */}
+          <button
+            type="button"
+            onClick={() => onSubmit(selectedRating)}
+            disabled={!selectedRating}
+            className="w-full bg-amber-600 text-white py-3 rounded-lg font-semibold hover:bg-amber-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {currentRating ? 'Update Rating' : 'Submit Rating'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Coming Soon Screen
-function ComingSoonScreen({ title, icon }) {
+function ComingSoonScreen({ title, icon}) {
   return (
     <div className="h-full w-full flex flex-col items-center justify-center bg-gradient-to-br from-amber-50 to-orange-100 p-6">
       <div className="text-center space-y-6">
