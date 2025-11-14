@@ -1182,7 +1182,15 @@ function ProfilePage({ user, stalls, savedStallIds, onEditStall, onDeleteStall, 
 
         <div className="text-center text-sm text-gray-500 pb-4">
           <p>Version 0.2 Beta</p>
-          <p className="mt-1">Need help? Contact developer</p>
+          <p className="mt-1">
+            Need help?{' '}
+            <a
+              href="mailto:nerdunsure+ping@gmail.com?subject=Accha%20Chai%20Support&body=Please%20don't%20edit%20the%20email%20address.%20Changing%20it%20may%20delay%20or%20prevent%20my%20reply.%0A%0A----%0A"
+              className="text-blue-600 hover:underline"
+            >
+              Contact developer
+            </a>
+          </p>
         </div>
       </div>
     </div>
