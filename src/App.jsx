@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Camera, MapPin, Navigation, Star, Plus, X, LogOut, Phone, Share2 } from 'lucide-react';
 import GoogleMapComponent from './GoogleMap';
-import { addStall as saveStallToDb, getStalls, deleteStall, updateStall, saveStall, unsaveStall, getSavedStalls, rateStall, getStallRatings, getUserRating } from './firestore';
+import { addStall as saveStallToDb, getStalls, deleteStall, updateStall, saveStall, unsaveStall, getSavedStalls, rateStall, getStallRatings, getUserRating, trackUserActivity, getBetaUsers } from './firestore';
 import { auth, googleProvider } from './firebase';
 import { signInWithPopup, signOut, onAuthStateChanged, deleteUser } from 'firebase/auth';
 import { collection, query, where, getDocs, doc, updateDoc, deleteDoc } from 'firebase/firestore';
@@ -19,6 +19,9 @@ async function checkBetaAccess(email) {
     return false; // If error, deny access (safe default)
   }
 }
+
+// ADMIN EMAIL - Change this to your email
+const ADMIN_EMAIL = 'nerdunsure@gmail.com';
 
 // Main App Component
 export default function AcchaChai() {
@@ -43,7 +46,7 @@ export default function AcchaChai() {
       if (currentUser) {
         // Check if user has beta access
         const hasAccess = await checkBetaAccess(currentUser.email);
-        
+
         if (!hasAccess) {
           // Sign them out and show message
           await signOut(auth);
@@ -53,12 +56,15 @@ export default function AcchaChai() {
           setLoading(false);
           return;
         }
-        
+
+        // Silently track user activity
+        trackUserActivity(currentUser.email);
+
         // Load user's saved stalls
         const saved = await getSavedStalls(currentUser.uid);
         setSavedStallIds(saved);
       }
-      
+
       setUser(currentUser);
       setAccessDenied(null);
       setLoading(false);
@@ -154,7 +160,7 @@ useEffect(() => {
   return (
     <div className="h-[100dvh] w-full flex flex-col bg-gray-50 overflow-hidden">
       {/* Header */}
-      <header className="bg-amber-600 text-white px-4 py-3 shadow-md flex items-center justify-between safe-area-top">
+      <header className="bg-amber-600 text-white px-4 py-3 shadow-md flex items-center safe-area-top">
         <div className="flex items-center gap-2">
           <div className="text-2xl">☕</div>
           <div>
@@ -164,12 +170,6 @@ useEffect(() => {
             </p>
           </div>
         </div>
-        <button 
-          onClick={handleSignOut}
-          className="p-2 hover:bg-amber-700 rounded-lg transition"
-        >
-          <LogOut size={20} />
-        </button>
       </header>
 
       {/* Main Content Area */}
@@ -242,13 +242,18 @@ useEffect(() => {
                     addedByName: 'Anonymous User'
                   });
                 }
-                
-                // Delete from betaUsers
-                await deleteDoc(doc(db, 'betaUsers', user.email));
-                
+
+                // Delete from betaUsers - query by email field first
+                const betaUsersRef = collection(db, 'betaUsers');
+                const q = query(betaUsersRef, where('email', '==', user.email));
+                const snapshot = await getDocs(q);
+                if (!snapshot.empty) {
+                  await deleteDoc(doc(db, 'betaUsers', snapshot.docs[0].id));
+                }
+
                 // Delete auth account
                 await deleteUser(auth.currentUser);
-                
+
                 alert('Account deleted successfully.');
               } catch (error) {
                 console.error('Error deleting account:', error);
@@ -1046,12 +1051,168 @@ function PinPlacementScreen({ onConfirm, onCancel, userLocation }) {
   );
 }
 
+// Admin Panel Component (Hidden - accessed by tapping profile image 5 times)
+function AdminPanel({ onBack }) {
+  const [betaUsers, setBetaUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const loadBetaUsers = async () => {
+    setLoading(true);
+    const users = await getBetaUsers();
+    // Sort: active users first, then by last active time
+    users.sort((a, b) => {
+      if (a.firstActiveAt && !b.firstActiveAt) return -1;
+      if (!a.firstActiveAt && b.firstActiveAt) return 1;
+      if (a.lastActiveAt && b.lastActiveAt) {
+        return new Date(b.lastActiveAt.seconds * 1000) - new Date(a.lastActiveAt.seconds * 1000);
+      }
+      return 0;
+    });
+    setBetaUsers(users);
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    loadBetaUsers();
+  }, []);
+
+  const formatTime = (timestamp) => {
+    if (!timestamp) return null;
+    const date = new Date(timestamp.seconds * 1000);
+    const now = new Date();
+    const diff = now - date;
+
+    const minutes = Math.floor(diff / 60000);
+    const hours = Math.floor(diff / 3600000);
+    const days = Math.floor(diff / 86400000);
+
+    if (minutes < 1) return 'Just now';
+    if (minutes < 60) return `${minutes}m ago`;
+    if (hours < 24) return `${hours}h ago`;
+    if (days === 1) return 'Yesterday';
+    if (days < 7) return `${days}d ago`;
+    return date.toLocaleDateString();
+  };
+
+  const usedAppUsers = betaUsers.filter(u => u.firstActiveAt);
+  const neverUsedUsers = betaUsers.filter(u => !u.firstActiveAt);
+
+  return (
+    <div className="h-full w-full overflow-y-auto bg-gray-50">
+      <div className="max-w-2xl mx-auto p-6 pb-24">
+        {/* Header */}
+        <div className="mb-6">
+          <button
+            onClick={onBack}
+            className="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-4"
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+            Back
+          </button>
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900">Beta User Tracking</h2>
+              <p className="text-sm text-gray-600 mt-1">
+                {usedAppUsers.length} used app • {neverUsedUsers.length} never opened
+              </p>
+            </div>
+            <button
+              onClick={loadBetaUsers}
+              disabled={loading}
+              className="px-4 py-2 bg-amber-600 text-white rounded-lg font-semibold hover:bg-amber-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition flex items-center gap-2"
+            >
+              <svg className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              {loading ? 'Refreshing...' : 'Refresh'}
+            </button>
+          </div>
+        </div>
+
+        {loading ? (
+          <div className="text-center py-8 text-gray-500">Loading...</div>
+        ) : (
+          <div className="space-y-4">
+            {/* Users Who Have Used The App */}
+            {usedAppUsers.length > 0 && (
+              <div className="bg-white rounded-2xl shadow-sm p-4">
+                <h3 className="font-bold text-gray-900 mb-3 px-2">Have Used App</h3>
+                {usedAppUsers.map((user) => (
+                  <div
+                    key={user.email}
+                    className="flex items-center gap-3 px-2 py-3 border-b border-gray-100 last:border-0"
+                  >
+                    <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
+                      <span className="text-blue-600 font-bold text-lg">✓</span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-gray-900 truncate">{user.email}</p>
+                      <p className="text-xs text-gray-500">
+                        Last seen: {formatTime(user.lastActiveAt)}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Users Who Never Opened */}
+            {neverUsedUsers.length > 0 && (
+              <div className="bg-white rounded-2xl shadow-sm p-4">
+                <h3 className="font-bold text-gray-900 mb-3 px-2">Never Opened App</h3>
+                {neverUsedUsers.map((user) => (
+                  <div
+                    key={user.email}
+                    className="flex items-center gap-3 px-2 py-3 border-b border-gray-100 last:border-0"
+                  >
+                    <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center flex-shrink-0">
+                      <span className="text-gray-400 font-bold text-lg">○</span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-gray-600 truncate">{user.email}</p>
+                      <p className="text-xs text-gray-400">Never opened the app</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // Profile Page Component
 function ProfilePage({ user, stalls, savedStallIds, onEditStall, onDeleteStall, onSignOut, onDeleteAccount }) {
   const [showSupportModal, setShowSupportModal] = useState(false);
-  const [currentView, setCurrentView] = useState('main'); // main, addedStalls, savedStalls
+  const [currentView, setCurrentView] = useState('main'); // main, addedStalls, savedStalls, adminPanel
+  const [tapCount, setTapCount] = useState(0);
+  const [tapTimeout, setTapTimeout] = useState(null);
   const userStalls = stalls.filter(stall => stall.addedBy === user.uid);
   const savedStalls = stalls.filter(stall => savedStallIds?.includes(stall.id));
+
+  const isAdmin = user.email === ADMIN_EMAIL;
+
+  // Hidden admin access - 5 quick taps on profile image (admin only)
+  const handleProfileImageTap = () => {
+    if (!isAdmin) return; // Only admin can access
+
+    if (tapTimeout) clearTimeout(tapTimeout);
+
+    const newCount = tapCount + 1;
+    setTapCount(newCount);
+
+    if (newCount >= 5) {
+      setCurrentView('adminPanel');
+      setTapCount(0);
+    } else {
+      const timeout = setTimeout(() => setTapCount(0), 1000);
+      setTapTimeout(timeout);
+    }
+  };
 
   const stallCounts = {
     total: userStalls.length,
@@ -1081,17 +1242,26 @@ function ProfilePage({ user, stalls, savedStallIds, onEditStall, onDeleteStall, 
     );
   }
 
+  if (currentView === 'adminPanel') {
+    return (
+      <AdminPanel
+        onBack={() => setCurrentView('main')}
+      />
+    );
+  }
+
   return (
     <div className="h-full w-full overflow-y-auto bg-gray-50">
       <div className="max-w-2xl mx-auto p-6 pb-24 space-y-6">
-        
+
         {/* User Info Card */}
         <div className="bg-white rounded-2xl shadow-sm p-6">
           <div className="flex items-center gap-4 mb-4">
-            <img 
-              src={user.photoURL || 'https://via.placeholder.com/80'} 
+            <img
+              src={user.photoURL || 'https://via.placeholder.com/80'}
               alt={user.displayName}
-              className="w-20 h-20 rounded-full border-2 border-amber-200"
+              className={`w-20 h-20 rounded-full border-2 border-amber-200 ${isAdmin ? 'cursor-pointer' : ''}`}
+              onClick={handleProfileImageTap}
             />
             <div className="flex-1">
               <h2 className="text-2xl font-bold text-gray-900">{user.displayName || 'Chai Lover'}</h2>

@@ -1,4 +1,4 @@
-import { collection, addDoc, getDocs, query, orderBy, limit, doc, updateDoc, deleteDoc, setDoc, getDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
+import { collection, addDoc, getDocs, query, orderBy, limit, doc, updateDoc, deleteDoc, setDoc, getDoc, arrayUnion, arrayRemove, where } from 'firebase/firestore';
 import { db } from './firebase';
 
 // Collection reference
@@ -171,5 +171,57 @@ export async function getUserRating(stallId, userId) {
   } catch (error) {
     console.error('Error getting user rating:', error);
     return null;
+  }
+}
+
+// Silently track user activity
+export async function trackUserActivity(email) {
+  try {
+    const betaUsersRef = collection(db, 'betaUsers');
+    const q = query(betaUsersRef, where('email', '==', email));
+    const snapshot = await getDocs(q);
+
+    if (!snapshot.empty) {
+      const now = new Date();
+      const userDoc = snapshot.docs[0];
+      const data = userDoc.data();
+
+      const updates = {
+        lastActiveAt: now
+      };
+
+      // Only set firstActiveAt if it doesn't exist
+      if (!data.firstActiveAt) {
+        updates.firstActiveAt = now;
+      }
+
+      const userDocRef = doc(db, 'betaUsers', userDoc.id);
+      await updateDoc(userDocRef, updates);
+
+      console.log('✓ User login tracked:', email);
+    } else {
+      console.warn('⚠ User not found in betaUsers:', email);
+    }
+  } catch (error) {
+    console.error('✗ Error tracking activity:', error);
+  }
+}
+
+// Get all beta users for admin view
+export async function getBetaUsers() {
+  try {
+    const betaUsersCollection = collection(db, 'betaUsers');
+    const querySnapshot = await getDocs(betaUsersCollection);
+    const users = [];
+    querySnapshot.forEach((doc) => {
+      users.push({
+        email: doc.id,
+        ...doc.data()
+      });
+    });
+    return users;
+  } catch (error) {
+    console.error('Error getting beta users:', error);
+    return [];
   }
 }
