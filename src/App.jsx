@@ -38,6 +38,8 @@ export default function AcchaChai() {
   const [editingStall, setEditingStall] = useState(null);
   const [isPinningLocation, setIsPinningLocation] = useState(false);
   const [pinnedLocation, setPinnedLocation] = useState(null);
+  const [deferredPrompt, setDeferredPrompt] = useState(null);
+  const [showInstallBanner, setShowInstallBanner] = useState(false);
   const mapRef = useRef(null);
 
   // Listen for auth state changes
@@ -129,6 +131,65 @@ useEffect(() => {
     }
   }, [stalls, user]);
 
+  // PWA Install Prompt
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e) => {
+      // Prevent the default browser install prompt
+      e.preventDefault();
+      // Store the event so we can trigger it later
+      setDeferredPrompt(e);
+
+      // Check if user dismissed the banner recently (within 7 days)
+      const dismissedTime = localStorage.getItem('installBannerDismissed');
+      const sevenDaysInMs = 7 * 24 * 60 * 60 * 1000;
+
+      if (dismissedTime && (Date.now() - parseInt(dismissedTime)) < sevenDaysInMs) {
+        // Don't show the banner if dismissed recently
+        return;
+      }
+
+      // Show our custom install banner
+      setShowInstallBanner(true);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
+    // Check if app is already installed
+    if (window.matchMedia('(display-mode: standalone)').matches) {
+      setShowInstallBanner(false);
+    }
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    };
+  }, []);
+
+  const handleInstallClick = async () => {
+    if (!deferredPrompt) return;
+
+    // Show the browser's install prompt
+    deferredPrompt.prompt();
+
+    // Wait for the user's response
+    const { outcome } = await deferredPrompt.userChoice;
+
+    if (outcome === 'accepted') {
+      console.log('User accepted the install prompt');
+    } else {
+      console.log('User dismissed the install prompt');
+    }
+
+    // Clear the deferred prompt
+    setDeferredPrompt(null);
+    setShowInstallBanner(false);
+  };
+
+  const handleDismissInstallBanner = () => {
+    setShowInstallBanner(false);
+    // Store dismissal in localStorage to not show again for a while
+    localStorage.setItem('installBannerDismissed', Date.now().toString());
+  };
+
   const handleSignOut = async () => {
     try {
       await signOut(auth);
@@ -171,6 +232,33 @@ useEffect(() => {
           </div>
         </div>
       </header>
+
+      {/* PWA Install Banner */}
+      {showInstallBanner && (
+        <div className="bg-gradient-to-r from-amber-500 to-orange-500 text-white px-4 py-3 shadow-lg flex items-center justify-between animate-slide-down">
+          <div className="flex items-center gap-3 flex-1">
+            <div className="text-2xl">☕</div>
+            <div className="flex-1">
+              <p className="font-semibold text-sm">Install Accha Chai</p>
+              <p className="text-xs text-amber-50">Get quick access from your home screen</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleInstallClick}
+              className="bg-white text-amber-600 px-4 py-1.5 rounded-full font-semibold text-sm hover:bg-amber-50 transition"
+            >
+              Install
+            </button>
+            <button
+              onClick={handleDismissInstallBanner}
+              className="p-1.5 hover:bg-white/20 rounded-full transition"
+            >
+              <X size={18} />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Main Content Area */}
       <div className="flex-1 relative overflow-hidden">
