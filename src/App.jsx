@@ -134,6 +134,7 @@ useEffect(() => {
   // PWA Install Prompt
   useEffect(() => {
     const handleBeforeInstallPrompt = (e) => {
+      console.log('✓ beforeinstallprompt event fired!');
       // Prevent the default browser install prompt
       e.preventDefault();
       // Store the event so we can trigger it later
@@ -144,20 +145,28 @@ useEffect(() => {
       const sevenDaysInMs = 7 * 24 * 60 * 60 * 1000;
 
       if (dismissedTime && (Date.now() - parseInt(dismissedTime)) < sevenDaysInMs) {
-        // Don't show the banner if dismissed recently
+        console.log('Install banner dismissed recently, not showing');
         return;
       }
 
       // Show our custom install banner
+      console.log('Showing install banner');
       setShowInstallBanner(true);
     };
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
 
     // Check if app is already installed
-    if (window.matchMedia('(display-mode: standalone)').matches) {
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
+    console.log('Is app installed (standalone mode)?', isStandalone);
+
+    if (isStandalone) {
       setShowInstallBanner(false);
     }
+
+    // Log browser info
+    console.log('User Agent:', navigator.userAgent);
+    console.log('Waiting for beforeinstallprompt event...');
 
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
