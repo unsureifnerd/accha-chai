@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Camera, MapPin, Navigation, Star, Plus, X, LogOut, Phone, Share2 } from 'lucide-react';
+import { Camera, MapPin, Navigation, Star, Plus, X, LogOut, Phone, Share2, Search } from 'lucide-react';
 import GoogleMapComponent from './GoogleMap';
 import { addStall as saveStallToDb, getStalls, deleteStall, updateStall, saveStall, unsaveStall, getSavedStalls, rateStall, getStallRatings, getUserRating, trackUserActivity, getBetaUsers } from './firestore';
 import { auth, googleProvider } from './firebase';
@@ -317,7 +317,7 @@ useEffect(() => {
       </div>
      </nav>
 
-      {/* Pin Placement Modal */}
+      {/* Pin Placement Modal with Search */}
       {isPinningLocation && userLocation && (
         <PinPlacementScreen
           userLocation={userLocation}
@@ -529,12 +529,43 @@ function MapView({ stalls, userLocation, onStallClick }) {
   );
 }
 
+// Fullscreen Image Viewer Modal
+function FullscreenImageViewer({ imageUrl, stallName, onClose }) {
+  return (
+    <div
+      className="fixed inset-0 bg-black bg-opacity-95 z-[70] flex items-center justify-center"
+      onClick={onClose}
+    >
+      <button
+        onClick={onClose}
+        className="absolute top-4 right-4 z-10 p-2 bg-white bg-opacity-20 backdrop-blur-sm rounded-full hover:bg-opacity-30 transition safe-area-top"
+      >
+        <X size={28} className="text-white" />
+      </button>
+      <div className="relative max-w-full max-h-full p-4">
+        <img
+          src={imageUrl}
+          alt={stallName}
+          className="max-w-full max-h-[90vh] object-contain"
+          onClick={(e) => e.stopPropagation()}
+        />
+        <p className="text-white text-center mt-2 text-sm">Tap outside to close</p>
+      </div>
+    </div>
+  );
+}
+
 // Stall Detail Bottom Sheet
 function StallDetail({ stall, onClose, savedStallIds, onToggleSave, currentUser, onRatingUpdate }) {
   const isSaved = savedStallIds?.includes(stall.id);
   const [showRatingModal, setShowRatingModal] = useState(false);
+  const [showFullscreenImage, setShowFullscreenImage] = useState(false);
   const [userRating, setUserRating] = useState(null);
   const [allRatings, setAllRatings] = useState([]);
+  const [panelHeight, setPanelHeight] = useState(50); // percentage of viewport height
+  const [isDragging, setIsDragging] = useState(false);
+  const [startY, setStartY] = useState(0);
+  const [startHeight, setStartHeight] = useState(50);
 
   // Load ratings when component mounts
   useEffect(() => {
@@ -549,6 +580,77 @@ function StallDetail({ stall, onClose, savedStallIds, onToggleSave, currentUser,
     };
     loadRatings();
   }, [stall.id, currentUser]);
+
+  // Handle drag start
+  const handleDragStart = (clientY) => {
+    setIsDragging(true);
+    setStartY(clientY);
+    setStartHeight(panelHeight);
+  };
+
+  // Handle drag move
+  const handleDragMove = (clientY) => {
+    if (!isDragging) return;
+
+    const deltaY = startY - clientY;
+    const viewportHeight = window.innerHeight;
+    const deltaPercent = (deltaY / viewportHeight) * 100;
+    const newHeight = Math.min(Math.max(startHeight + deltaPercent, 30), 90);
+
+    setPanelHeight(newHeight);
+  };
+
+  // Handle drag end
+  const handleDragEnd = () => {
+    setIsDragging(false);
+
+    // Snap to nearest position
+    if (panelHeight < 40) {
+      onClose(); // Close if dragged down too much
+    } else if (panelHeight < 60) {
+      setPanelHeight(50); // Snap to half
+    } else {
+      setPanelHeight(80); // Snap to full
+    }
+  };
+
+  // Touch handlers
+  const handleTouchStart = (e) => {
+    handleDragStart(e.touches[0].clientY);
+  };
+
+  const handleTouchMove = (e) => {
+    handleDragMove(e.touches[0].clientY);
+  };
+
+  const handleTouchEnd = () => {
+    handleDragEnd();
+  };
+
+  // Mouse handlers
+  const handleMouseDown = (e) => {
+    handleDragStart(e.clientY);
+  };
+
+  useEffect(() => {
+    if (!isDragging) return;
+
+    const handleMouseMove = (e) => {
+      handleDragMove(e.clientY);
+    };
+
+    const handleMouseUp = () => {
+      handleDragEnd();
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDragging, startY, startHeight, panelHeight]);
 
   // Calculate aggregate rating
   const ratingCounts = {
@@ -593,43 +695,82 @@ function StallDetail({ stall, onClose, savedStallIds, onToggleSave, currentUser,
   };
 
   return (
-    <div className="absolute inset-x-0 bottom-0 bg-white rounded-t-3xl shadow-2xl max-h-[70vh] overflow-y-auto">
-      <div className="sticky top-0 bg-white px-4 py-3 flex items-center justify-between border-b">
-        <div className="flex items-center gap-1">
-          <button
-            onClick={() => onToggleSave(stall.id)}
-            className="p-2 hover:bg-gray-100 rounded-full transition"
-          >
-            {isSaved ? (
-              <svg className="w-6 h-6 text-red-500 fill-current" viewBox="0 0 24 24">
-                <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
-              </svg>
-            ) : (
-              <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/>
-              </svg>
-            )}
-          </button>
-          <button
-            onClick={handleShare}
-            className="p-2 hover:bg-gray-100 rounded-full transition"
-          >
-            <Share2 size={20} className="text-gray-600" />
-          </button>
+    <>
+      {/* Backdrop - Click to close */}
+      <div
+        className="fixed inset-0 bg-black bg-opacity-30 z-40"
+        onClick={onClose}
+      />
+
+      {/* Bottom Sheet Panel */}
+      <div
+        className="fixed inset-x-0 bottom-0 bg-white rounded-t-3xl shadow-2xl z-50 flex flex-col transition-all"
+        style={{ height: `${panelHeight}vh` }}
+      >
+        {/* Drag Handle Header */}
+        <div
+          className="sticky top-0 bg-white px-4 py-3 border-b cursor-grab active:cursor-grabbing"
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          onMouseDown={handleMouseDown}
+        >
+          <div className="flex items-center justify-between relative">
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => onToggleSave(stall.id)}
+                className="p-2 hover:bg-gray-100 rounded-full transition"
+              >
+                {isSaved ? (
+                  <svg className="w-6 h-6 text-red-500 fill-current" viewBox="0 0 24 24">
+                    <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+                  </svg>
+                ) : (
+                  <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/>
+                  </svg>
+                )}
+              </button>
+              <button
+                onClick={handleShare}
+                className="p-2 hover:bg-gray-100 rounded-full transition"
+              >
+                <Share2 size={20} className="text-gray-600" />
+              </button>
+            </div>
+
+            {/* Centered Drag Handle - vertically aligned with buttons */}
+            <div className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 pointer-events-none">
+              <div className="w-12 h-1 bg-gray-300 rounded-full"></div>
+            </div>
+
+            <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-full">
+              <X size={24} />
+            </button>
+          </div>
         </div>
-        <div className="w-12 h-1 bg-gray-300 rounded-full"></div>
-        <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-full">
-          <X size={24} />
-        </button>
-      </div>
+
+        {/* Scrollable Content */}
+        <div className="flex-1 overflow-y-auto">
+        {/* Full-width Photo Banner */}
+        <div
+          className="w-full h-[200px] bg-gradient-to-br from-gray-100 to-gray-200 cursor-pointer overflow-hidden"
+          onClick={() => setShowFullscreenImage(true)}
+        >
+          <img
+            src={stall.photo}
+            alt={stall.name}
+            className="w-full h-full object-cover"
+          />
+        </div>
 
       <div className="p-4 space-y-4">
-        <img
-          src={stall.photo}
-          alt={stall.name}
-          className="w-full h-48 object-cover rounded-lg"
-        />
+        {/* Name */}
+        <div>
+          <h3 className="font-bold text-xl text-gray-800">{stall.name}</h3>
+        </div>
 
+        {/* Rating Badge */}
         <div className="flex items-center gap-2">
           <span className={`px-3 py-1 rounded-full text-white font-semibold ${
             stall.rating === 'Accha' ? 'bg-green-500' :
@@ -679,10 +820,12 @@ function StallDetail({ stall, onClose, savedStallIds, onToggleSave, currentUser,
           </div>
         )}
 
-        <div>
-          <h3 className="font-bold text-lg text-gray-800 mb-2">{stall.name}</h3>
-          <p className="text-gray-600">{stall.description}</p>
-        </div>
+        {/* Description */}
+        {stall.description && (
+          <div>
+            <p className="text-gray-600">{stall.description}</p>
+          </div>
+        )}
 
         <div className="grid grid-cols-2 gap-3 pt-2">
           <button 
@@ -712,6 +855,15 @@ function StallDetail({ stall, onClose, savedStallIds, onToggleSave, currentUser,
         </div>
       </div>
 
+      {/* Fullscreen Image Viewer */}
+      {showFullscreenImage && (
+        <FullscreenImageViewer
+          imageUrl={stall.photo}
+          stallName={stall.name}
+          onClose={() => setShowFullscreenImage(false)}
+        />
+      )}
+
       {/* Rating Modal */}
       {showRatingModal && (
         <RatingModal
@@ -734,7 +886,9 @@ function StallDetail({ stall, onClose, savedStallIds, onToggleSave, currentUser,
           }}
         />
       )}
-    </div>
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -964,13 +1118,28 @@ function AddStallModal({ userLocation, onClose, onSubmit }) {
   );
 }
 
-// Pin Placement Screen
+// Pin Placement Screen with Integrated Search
 function PinPlacementScreen({ onConfirm, onCancel, userLocation }) {
+  const [searchQuery, setSearchQuery] = useState('');
+  const [predictions, setPredictions] = useState([]);
+  const [showPredictions, setShowPredictions] = useState(false);
+  const autocompleteService = useRef(null);
+  const placesService = useRef(null);
   const [map, setMap] = useState(null);
   const [centerCoords, setCenterCoords] = useState(userLocation);
 
+  // Initialize Google Places Services
   useEffect(() => {
-    // Initialize map
+    if (window.google && window.google.maps && window.google.maps.places) {
+      autocompleteService.current = new window.google.maps.places.AutocompleteService();
+      const mapDiv = document.createElement('div');
+      const tempMap = new window.google.maps.Map(mapDiv);
+      placesService.current = new window.google.maps.places.PlacesService(tempMap);
+    }
+  }, []);
+
+  // Initialize map
+  useEffect(() => {
     if (window.google && userLocation) {
       const googleMap = new window.google.maps.Map(document.getElementById('pin-map'), {
         center: userLocation,
@@ -1000,52 +1169,187 @@ function PinPlacementScreen({ onConfirm, onCancel, userLocation }) {
     }
   }, [userLocation]);
 
+  // Handle search query change
+  const handleSearchChange = (query) => {
+    setSearchQuery(query);
+
+    if (query.length < 3) {
+      setPredictions([]);
+      setShowPredictions(false);
+      return;
+    }
+
+    if (autocompleteService.current) {
+      autocompleteService.current.getPlacePredictions(
+        {
+          input: query,
+          componentRestrictions: { country: 'in' },
+        },
+        (results, status) => {
+          if (status === window.google.maps.places.PlacesServiceStatus.OK && results) {
+            setPredictions(results);
+            setShowPredictions(true);
+          } else {
+            setPredictions([]);
+            setShowPredictions(false);
+          }
+        }
+      );
+    }
+  };
+
+  // Handle place selection
+  const handlePlaceSelect = (placeId) => {
+    if (placesService.current && map) {
+      placesService.current.getDetails(
+        {
+          placeId: placeId,
+          fields: ['geometry', 'name'],
+        },
+        (place, status) => {
+          if (status === window.google.maps.places.PlacesServiceStatus.OK && place.geometry) {
+            const location = {
+              lat: place.geometry.location.lat(),
+              lng: place.geometry.location.lng(),
+            };
+
+            // Smooth pan to location
+            map.panTo(location);
+            map.setZoom(18);
+
+            setCenterCoords(location);
+            setShowPredictions(false);
+          }
+        }
+      );
+    }
+  };
+
+  // Clear search
+  const handleClearSearch = () => {
+    setSearchQuery('');
+    setPredictions([]);
+    setShowPredictions(false);
+
+    // Return to user location
+    if (map && userLocation) {
+      map.panTo(userLocation);
+      setCenterCoords(userLocation);
+    }
+  };
+
+  // Go to user location
+  const handleMyLocation = () => {
+    if (map && userLocation) {
+      map.panTo(userLocation);
+      map.setZoom(18);
+      setCenterCoords(userLocation);
+    }
+  };
+
   return (
-    <div className="fixed inset-0 z-50 bg-white">
+    <div className="fixed inset-0 z-50 bg-white flex flex-col">
       {/* Header */}
-      <div className="absolute top-0 left-0 right-0 z-10 bg-white shadow-md p-4 safe-area-top">
-        <div className="flex items-center justify-between">
+      <div className="bg-white border-b px-4 py-4 safe-area-top">
+        <div className="flex items-center justify-between mb-3">
           <button
             onClick={onCancel}
             className="text-gray-600 font-medium"
           >
             Cancel
           </button>
-          <h2 className="text-lg font-bold text-gray-800">Pin Location</h2>
+          <h2 className="text-lg font-bold text-gray-800">Add Location</h2>
           <div className="w-16"></div>
         </div>
-        <p className="text-sm text-gray-600 mt-2 text-center">
-          Move the map to position the pin exactly on the stall
-        </p>
+
+        {/* Search Box */}
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => handleSearchChange(e.target.value)}
+            placeholder="Search for a location..."
+            className="w-full pl-10 pr-10 py-3 border-2 border-gray-300 rounded-lg focus:border-amber-500 focus:outline-none"
+          />
+          {searchQuery && (
+            <button
+              onClick={handleClearSearch}
+              className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+            >
+              <X size={20} />
+            </button>
+          )}
+        </div>
+
+        {/* Search Results Dropdown */}
+        {showPredictions && predictions.length > 0 && (
+          <div className="absolute left-4 right-4 bg-white border border-gray-200 rounded-lg shadow-lg mt-1 max-h-60 overflow-y-auto z-20">
+            {predictions.map((prediction) => (
+              <button
+                key={prediction.place_id}
+                onClick={() => handlePlaceSelect(prediction.place_id)}
+                className="w-full px-4 py-3 hover:bg-gray-50 transition text-left border-b border-gray-100 last:border-0"
+              >
+                <div className="flex items-start gap-2">
+                  <MapPin size={16} className="text-gray-400 mt-1 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-gray-800 text-sm">{prediction.structured_formatting.main_text}</p>
+                    <p className="text-xs text-gray-600 truncate">{prediction.structured_formatting.secondary_text}</p>
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Divider with Heading */}
+      <div className="px-4 py-3 bg-gray-50 border-b">
+        <div className="flex items-center gap-3">
+          <div className="flex-1 border-t border-gray-300"></div>
+          <span className="text-sm text-gray-600 font-medium">Pin Point on Map</span>
+          <div className="flex-1 border-t border-gray-300"></div>
+        </div>
       </div>
 
       {/* Map Container */}
-      <div id="pin-map" className="w-full h-full"></div>
+      <div className="flex-1 relative">
+        <div id="pin-map" className="w-full h-full"></div>
 
-      {/* Fixed Pin in Center */}
-      <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-10 pointer-events-none">
-        <MapPin 
-          size={48} 
-          className="text-red-600 drop-shadow-lg"
-          fill="currentColor"
-        />
-      </div>
+        {/* Fixed Pin in Center */}
+        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-10 pointer-events-none">
+          <MapPin
+            size={48}
+            className="text-red-600 drop-shadow-lg"
+            fill="currentColor"
+          />
+        </div>
 
-      {/* Confirm Button */}
-      <div className="absolute bottom-0 left-0 right-0 z-10 px-6 pb-8 safe-area-bottom bg-white">
+        {/* My Location Button */}
         <button
-          onClick={() => centerCoords && onConfirm(centerCoords)}
-          disabled={!centerCoords}
-          className="w-full bg-amber-600 text-white py-4 rounded-xl font-bold text-lg shadow-lg hover:bg-amber-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition"
+          onClick={handleMyLocation}
+          className="absolute top-4 right-4 z-10 bg-white p-3 rounded-full shadow-lg hover:bg-gray-100 transition active:scale-95"
         >
-          Confirm Location
+          <Navigation size={20} className="text-blue-600" />
         </button>
-        
-        {centerCoords && (
-          <p className="text-xs text-gray-500 text-center mt-2">
-            📍 {centerCoords.lat.toFixed(6)}, {centerCoords.lng.toFixed(6)}
-          </p>
-        )}
+
+        {/* Confirm Button */}
+        <div className="absolute bottom-0 left-0 right-0 z-10 px-6 pb-6 pt-4 bg-gradient-to-t from-white via-white to-transparent safe-area-bottom">
+          <button
+            onClick={() => centerCoords && onConfirm(centerCoords)}
+            disabled={!centerCoords}
+            className="w-full bg-amber-600 text-white py-4 rounded-xl font-bold text-lg shadow-lg hover:bg-amber-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition"
+          >
+            Confirm Location
+          </button>
+
+          {centerCoords && (
+            <p className="text-xs text-gray-500 text-center mt-2">
+              📍 {centerCoords.lat.toFixed(6)}, {centerCoords.lng.toFixed(6)}
+            </p>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -1642,6 +1946,8 @@ function ComingSoonScreen({ title, icon}) {
 
 // Added Stalls View
 function AddedStallsView({ stalls, onBack, onEditStall, onDeleteStall }) {
+  const [selectedImage, setSelectedImage] = useState(null);
+
   return (
     <div className="h-full w-full overflow-y-auto bg-gray-50">
       <div className="max-w-2xl mx-auto pb-24">
@@ -1674,32 +1980,43 @@ function AddedStallsView({ stalls, onBack, onEditStall, onDeleteStall }) {
 
                 return (
                   <div key={stall.id} className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
-                    <div className="flex gap-3">
+                    {/* Name */}
+                    <h4 className="font-semibold text-lg text-gray-900 mb-2">
+                      {stall.name || 'Chai Stall'}
+                    </h4>
+
+                    {/* Rating */}
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className={`px-2 py-1 rounded-full text-white text-sm font-semibold ${
+                        stall.rating === 'Accha' ? 'bg-green-500' :
+                        stall.rating === 'Thik-Thak' ? 'bg-yellow-500' :
+                        'bg-red-500'
+                      }`}>
+                        {stall.rating}!
+                      </span>
+                      {isCommunityOwned && (
+                        <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">
+                          Community-owned
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Description */}
+                    {stall.description && (
+                      <p className="text-sm text-gray-600 mb-3">{stall.description}</p>
+                    )}
+
+                    {/* Photo Thumbnail */}
+                    <div
+                      onClick={() => setSelectedImage({ url: stall.photo, name: stall.name })}
+                      className="cursor-pointer mb-3"
+                    >
                       <img
                         src={stall.photo}
                         alt={stall.name || 'Chai stall'}
-                        className="w-20 h-20 object-cover rounded-lg"
+                        className="w-16 h-16 object-cover rounded-lg border-2 border-gray-200 hover:border-amber-400 transition"
                       />
-                      <div className="flex-1 min-w-0">
-                        <h4 className="font-semibold text-gray-900 truncate">
-                          {stall.name || 'Chai Stall'}
-                        </h4>
-                        <p className="text-sm text-gray-600 truncate">{stall.description || 'No description'}</p>
-                        <div className="flex items-center gap-2 mt-1">
-                          <span className={`text-sm font-medium ${
-                            stall.rating === 'Accha' ? 'text-green-600' :
-                            stall.rating === 'Thik-Thak' ? 'text-yellow-600' :
-                            'text-red-600'
-                          }`}>
-                            {stall.rating}!
-                          </span>
-                          {isCommunityOwned && (
-                            <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">
-                              Community-owned
-                            </span>
-                          )}
-                        </div>
-                      </div>
+                      <p className="text-xs text-gray-500 mt-1">Tap to view photo</p>
                     </div>
 
                     <div className="flex gap-2 mt-3">
@@ -1737,12 +2054,23 @@ function AddedStallsView({ stalls, onBack, onEditStall, onDeleteStall }) {
           )}
         </div>
       </div>
+
+      {/* Fullscreen Image Viewer */}
+      {selectedImage && (
+        <FullscreenImageViewer
+          imageUrl={selectedImage.url}
+          stallName={selectedImage.name}
+          onClose={() => setSelectedImage(null)}
+        />
+      )}
     </div>
   );
 }
 
 // Saved Stalls View
 function SavedStallsView({ stalls, onBack }) {
+  const [selectedImage, setSelectedImage] = useState(null);
+
   return (
     <div className="h-full w-full overflow-y-auto bg-gray-50">
       <div className="max-w-2xl mx-auto pb-24">
@@ -1771,25 +2099,38 @@ function SavedStallsView({ stalls, onBack }) {
             <div className="space-y-4">
               {stalls.map((stall) => (
                 <div key={stall.id} className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
-                  <div className="flex gap-3">
+                  {/* Name */}
+                  <h4 className="font-semibold text-lg text-gray-900 mb-2">
+                    {stall.name || 'Chai Stall'}
+                  </h4>
+
+                  {/* Rating */}
+                  <div className="mb-2">
+                    <span className={`px-2 py-1 rounded-full text-white text-sm font-semibold ${
+                      stall.rating === 'Accha' ? 'bg-green-500' :
+                      stall.rating === 'Thik-Thak' ? 'bg-yellow-500' :
+                      'bg-red-500'
+                    }`}>
+                      {stall.rating}!
+                    </span>
+                  </div>
+
+                  {/* Description */}
+                  {stall.description && (
+                    <p className="text-sm text-gray-600 mb-3">{stall.description}</p>
+                  )}
+
+                  {/* Photo Thumbnail */}
+                  <div
+                    onClick={() => setSelectedImage({ url: stall.photo, name: stall.name })}
+                    className="cursor-pointer mb-3"
+                  >
                     <img
                       src={stall.photo}
                       alt={stall.name || 'Chai stall'}
-                      className="w-20 h-20 object-cover rounded-lg"
+                      className="w-16 h-16 object-cover rounded-lg border-2 border-gray-200 hover:border-amber-400 transition"
                     />
-                    <div className="flex-1 min-w-0">
-                      <h4 className="font-semibold text-gray-900 truncate">
-                        {stall.name || 'Chai Stall'}
-                      </h4>
-                      <p className="text-sm text-gray-600 truncate">{stall.description || 'No description'}</p>
-                      <span className={`text-sm font-medium ${
-                        stall.rating === 'Accha' ? 'text-green-600' :
-                        stall.rating === 'Thik-Thak' ? 'text-yellow-600' :
-                        'text-red-600'
-                      }`}>
-                        {stall.rating}!
-                      </span>
-                    </div>
+                    <p className="text-xs text-gray-500 mt-1">Tap to view photo</p>
                   </div>
 
                   <button
@@ -1808,6 +2149,15 @@ function SavedStallsView({ stalls, onBack }) {
           )}
         </div>
       </div>
+
+      {/* Fullscreen Image Viewer */}
+      {selectedImage && (
+        <FullscreenImageViewer
+          imageUrl={selectedImage.url}
+          stallName={selectedImage.name}
+          onClose={() => setSelectedImage(null)}
+        />
+      )}
     </div>
   );
 }

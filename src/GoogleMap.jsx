@@ -6,6 +6,9 @@ const mapContainerStyle = {
   height: '100%'
 };
 
+// Load Places library
+const libraries = ['places'];
+
 // Helper function to get marker color
 const getMarkerColor = (rating) => {
   switch (rating) {
@@ -97,7 +100,10 @@ export default function Map({ stalls, userLocation, onStallClick }) {
   }
 
   return (
-    <LoadScript googleMapsApiKey={import.meta.env.VITE_GOOGLE_MAPS_API_KEY}>
+    <LoadScript
+      googleMapsApiKey={import.meta.env.VITE_GOOGLE_MAPS_API_KEY}
+      libraries={libraries}
+    >
       <GoogleMap
         mapContainerStyle={mapContainerStyle}
         center={userLocation}
