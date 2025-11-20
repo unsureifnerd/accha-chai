@@ -41,6 +41,7 @@ export default function AcchaChai() {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [showInstallBanner, setShowInstallBanner] = useState(false);
   const mapRef = useRef(null);
+  const isHandlingPopState = useRef(false);
 
   // Listen for auth state changes
   useEffect(() => {
@@ -198,6 +199,79 @@ useEffect(() => {
     // Store dismissal in localStorage to not show again for a while
     localStorage.setItem('installBannerDismissed', Date.now().toString());
   };
+
+  // History Management - Handle back button
+  useEffect(() => {
+    const handlePopState = (event) => {
+      isHandlingPopState.current = true;
+
+      const state = event.state;
+
+      if (!state) {
+        // No state means user went back to initial page load
+        // Reset to home tab with nothing selected
+        setActiveTab('home');
+        setSelectedStall(null);
+        setShowAddStall(false);
+        setEditingStall(null);
+        setIsPinningLocation(false);
+        isHandlingPopState.current = false;
+        return;
+      }
+
+      // Restore the app state from history
+      if (state.tab) setActiveTab(state.tab);
+      if (state.selectedStallId) {
+        const stall = stalls.find(s => s.id === state.selectedStallId);
+        setSelectedStall(stall || null);
+      } else {
+        setSelectedStall(null);
+      }
+      setShowAddStall(state.showAddStall || false);
+      setEditingStall(state.editingStall || null);
+      setIsPinningLocation(state.isPinningLocation || false);
+
+      isHandlingPopState.current = false;
+    };
+
+    window.addEventListener('popstate', handlePopState);
+
+    // Initialize with a base state if there isn't one
+    if (!window.history.state) {
+      window.history.replaceState({ tab: 'home' }, '');
+    }
+
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, [stalls]);
+
+  // Push state to history when navigation changes
+  useEffect(() => {
+    // Don't push state if we're handling a popstate event
+    if (isHandlingPopState.current) return;
+
+    const currentState = {
+      tab: activeTab,
+      selectedStallId: selectedStall?.id || null,
+      showAddStall,
+      editingStall,
+      isPinningLocation
+    };
+
+    // Only push if something changed
+    const lastState = window.history.state;
+    const hasChanged = !lastState ||
+      lastState.tab !== currentState.tab ||
+      lastState.selectedStallId !== currentState.selectedStallId ||
+      lastState.showAddStall !== currentState.showAddStall ||
+      lastState.editingStall !== currentState.editingStall ||
+      lastState.isPinningLocation !== currentState.isPinningLocation;
+
+    if (hasChanged) {
+      window.history.pushState(currentState, '');
+    }
+  }, [activeTab, selectedStall, showAddStall, editingStall, isPinningLocation]);
 
   const handleSignOut = async () => {
     try {
