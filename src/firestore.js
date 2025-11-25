@@ -156,10 +156,10 @@ async function updateAggregatedRating(stallId) {
     if (ratingsCount === 0) {
       // No ratings, set defaults
       const stallRef = doc(db, 'stalls', stallId);
-      await updateDoc(stallRef, {
+      await setDoc(stallRef, {
         averageRating: 0,
         ratingsCount: 0
-      });
+      }, { merge: true });
       return { averageRating: 0, ratingsCount: 0 };
     }
 
@@ -167,12 +167,12 @@ async function updateAggregatedRating(stallId) {
     const sum = ratings.reduce((acc, rating) => acc + rating, 0);
     const averageRating = sum / ratingsCount;
 
-    // Update the stall document
+    // Update the stall document (use setDoc with merge to create fields if they don't exist)
     const stallRef = doc(db, 'stalls', stallId);
-    await updateDoc(stallRef, {
+    await setDoc(stallRef, {
       averageRating: Math.round(averageRating * 10) / 10, // Round to 1 decimal
       ratingsCount
-    });
+    }, { merge: true });
 
     return { averageRating, ratingsCount };
   } catch (error) {
