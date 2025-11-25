@@ -82,29 +82,63 @@ export default function Map({ stalls, userLocation, onStallClick }) {
       clustererRef.current = new MarkerClusterer({
         map,
         markers: [],
+        // More aggressive clustering - groups at all zoom levels
+        algorithmOptions: {
+          maxZoom: 20, // Cluster at all zoom levels (even when zoomed in very close)
+          radius: 150, // Larger radius = more aggressive clustering
+        },
         renderer: {
-          render: ({ count, position }) => {
+          render: ({ count, position, markers }) => {
+            // Get current zoom level
+            const zoom = map.getZoom();
+
+            // Scale badge size based on zoom level
+            // Far out (zoom 1-8): small dots
+            // Medium (zoom 9-12): medium badges
+            // Close (zoom 13+): larger badges
+            let size, fontSize, strokeWidth;
+
+            if (zoom <= 8) {
+              // Far zoom - tiny dot
+              size = 20;
+              fontSize = 0; // Hide text when very small
+              strokeWidth = 2;
+            } else if (zoom <= 12) {
+              // Medium zoom - small badge
+              size = 30;
+              fontSize = 11;
+              strokeWidth = 2;
+            } else {
+              // Close zoom - normal badge
+              size = 40;
+              fontSize = 14;
+              strokeWidth = 3;
+            }
+
             // Custom cluster marker styling
             return new window.google.maps.Marker({
               position,
               icon: {
                 url: `data:image/svg+xml,${encodeURIComponent(`
-                  <svg width="50" height="50" viewBox="0 0 50 50" xmlns="http://www.w3.org/2000/svg">
-                    <circle cx="25" cy="25" r="23" fill="#f97316" stroke="white" stroke-width="3"/>
-                    <text x="25" y="30" text-anchor="middle" font-size="16" font-weight="bold" fill="white">${count}</text>
+                  <svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="${size/2}" cy="${size/2}" r="${size/2 - strokeWidth}" fill="#f97316" stroke="white" stroke-width="${strokeWidth}"/>
+                    ${fontSize > 0 ? `<text x="${size/2}" y="${size/2 + fontSize/3}" text-anchor="middle" font-size="${fontSize}" font-weight="bold" fill="white">${count}</text>` : ''}
                   </svg>
                 `)}`,
+                scaledSize: new window.google.maps.Size(size, size),
+                anchor: new window.google.maps.Point(size/2, size/2),
               },
-              label: {
-                text: '',
-                color: 'white',
-                fontSize: '14px',
-                fontWeight: 'bold',
-              },
-              zIndex: 1000,
+              zIndex: 1000 + count, // Higher count = higher z-index
             });
           },
         },
+      });
+
+      // Listen for zoom changes and re-render clusters
+      map.addListener('zoom_changed', () => {
+        if (clustererRef.current) {
+          clustererRef.current.render();
+        }
       });
     }
 
