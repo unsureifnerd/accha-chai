@@ -412,13 +412,8 @@ useEffect(() => {
                 // Anonymize user data (ratings, stalls, user document)
                 await deleteUserAccount(user.uid, user.email);
 
-                // Delete from betaUsers collection
-                const betaUsersRef = collection(db, 'betaUsers');
-                const q = query(betaUsersRef, where('email', '==', user.email));
-                const snapshot = await getDocs(q);
-                if (!snapshot.empty) {
-                  await deleteDoc(doc(db, 'betaUsers', snapshot.docs[0].id));
-                }
+                // Note: betaUsers entry remains for admin records (not PII, GDPR compliant)
+                // Admin can manually remove if needed
 
                 // Delete Firebase Auth account
                 await deleteUser(auth.currentUser);
