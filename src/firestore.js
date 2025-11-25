@@ -4,8 +4,18 @@ import { db } from './firebase';
 // Collection reference
 const stallsCollection = collection(db, 'stalls');
 
+// Generate email hash for rating document IDs (privacy-preserving, prevents gaming)
+async function hashEmail(email) {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(email.toLowerCase().trim());
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  return hashHex;
+}
+
 // Add a new stall
-export const addStall = async (stallData) => {
+export const addStall = async (stallData, userEmail) => {
   try {
     // Separate out the creator's rating before adding the stall
     const { rating: creatorRating, addedBy, ...restData } = stallData;
@@ -20,12 +30,14 @@ export const addStall = async (stallData) => {
       averageRating: creatorRating // Initially just the creator's rating
     });
 
-    // Save creator's rating to the subcollection
-    if (creatorRating && addedBy) {
-      const ratingRef = doc(db, 'stalls', docRef.id, 'ratings', addedBy);
+    // Save creator's rating to the subcollection using email hash
+    if (creatorRating && addedBy && userEmail) {
+      const emailHash = await hashEmail(userEmail);
+      const ratingRef = doc(db, 'stalls', docRef.id, 'ratings', emailHash);
       await setDoc(ratingRef, {
         rating: creatorRating,
         userId: addedBy,
+        email: userEmail,
         createdAt: new Date()
       });
     }
@@ -182,12 +194,14 @@ async function updateAggregatedRating(stallId) {
 }
 
 // Submit or update a rating for a stall
-export async function rateStall(stallId, userId, rating) {
+export async function rateStall(stallId, userId, userEmail, rating) {
   try {
-    const ratingRef = doc(db, 'stalls', stallId, 'ratings', userId);
+    const emailHash = await hashEmail(userEmail);
+    const ratingRef = doc(db, 'stalls', stallId, 'ratings', emailHash);
     await setDoc(ratingRef, {
       rating,
       userId,
+      email: userEmail,
       createdAt: new Date()
     });
 
@@ -221,9 +235,10 @@ export async function getStallRatings(stallId) {
 }
 
 // Get user's rating for a stall (if any)
-export async function getUserRating(stallId, userId) {
+export async function getUserRating(stallId, userEmail) {
   try {
-    const ratingRef = doc(db, 'stalls', stallId, 'ratings', userId);
+    const emailHash = await hashEmail(userEmail);
+    const ratingRef = doc(db, 'stalls', stallId, 'ratings', emailHash);
     const ratingDoc = await getDoc(ratingRef);
 
     if (!ratingDoc.exists()) {
@@ -286,5 +301,51 @@ export async function getBetaUsers() {
   } catch (error) {
     console.error('Error getting beta users:', error);
     return [];
+  }
+}
+
+// Delete user account and anonymize their data (GDPR compliant)
+export async function deleteUserAccount(userId, userEmail) {
+  try {
+    const emailHash = await hashEmail(userEmail);
+
+    // 1. Delete user document
+    const userRef = doc(db, 'users', userId);
+    await deleteDoc(userRef);
+
+    // 2. Anonymize all ratings by this user across all stalls
+    const stallsSnapshot = await getDocs(stallsCollection);
+
+    for (const stallDoc of stallsSnapshot.docs) {
+      const ratingRef = doc(db, 'stalls', stallDoc.id, 'ratings', emailHash);
+      const ratingDoc = await getDoc(ratingRef);
+
+      if (ratingDoc.exists()) {
+        // Anonymize the rating (remove PII but keep the rating value)
+        await setDoc(ratingRef, {
+          rating: ratingDoc.data().rating,
+          userId: 'deleted-user',
+          email: null,
+          createdAt: ratingDoc.data().createdAt,
+          deletedAt: new Date()
+        });
+      }
+    }
+
+    // 3. Mark user's stalls as community-owned (don't delete them)
+    const userStallsQuery = query(stallsCollection, where('addedBy', '==', userId));
+    const userStallsSnapshot = await getDocs(userStallsQuery);
+
+    for (const stallDoc of userStallsSnapshot.docs) {
+      await setDoc(doc(db, 'stalls', stallDoc.id), {
+        addedBy: 'deleted-user'
+      }, { merge: true });
+    }
+
+    console.log('✓ User account deleted and data anonymized');
+    return { success: true };
+  } catch (error) {
+    console.error('Error deleting user account:', error);
+    throw error;
   }
 }

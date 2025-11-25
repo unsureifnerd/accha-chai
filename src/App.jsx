@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Camera, MapPin, Navigation, Star, Plus, X, LogOut, Phone, Share2, Search } from 'lucide-react';
 import GoogleMapComponent from './GoogleMap';
-import { addStall as saveStallToDb, getStalls, deleteStall, updateStall, saveStall, unsaveStall, getSavedStalls, rateStall, getStallRatings, getUserRating, trackUserActivity, getBetaUsers } from './firestore';
+import { addStall as saveStallToDb, getStalls, deleteStall, updateStall, saveStall, unsaveStall, getSavedStalls, rateStall, getStallRatings, getUserRating, trackUserActivity, getBetaUsers, deleteUserAccount } from './firestore';
 import { auth, googleProvider } from './firebase';
 import { signInWithPopup, signOut, onAuthStateChanged, deleteUser } from 'firebase/auth';
 import { collection, query, where, getDocs, doc, updateDoc, deleteDoc } from 'firebase/firestore';
@@ -404,17 +404,15 @@ useEffect(() => {
             }}
             onSignOut={handleSignOut}
             onDeleteAccount={async () => {
-              try {
-                // Anonymize user's stalls
-                const userStalls = stalls.filter(s => s.addedBy === user.uid);
-                for (const stall of userStalls) {
-                  await updateStall(stall.id, {
-                    addedBy: 'deleted-user',
-                    addedByName: 'Anonymous User'
-                  });
-                }
+              if (!window.confirm('Are you sure you want to delete your account? This action cannot be undone.\n\nYour stalls will remain as community-owned, and your ratings will be anonymized.')) {
+                return;
+              }
 
-                // Delete from betaUsers - query by email field first
+              try {
+                // Anonymize user data (ratings, stalls, user document)
+                await deleteUserAccount(user.uid, user.email);
+
+                // Delete from betaUsers collection
                 const betaUsersRef = collection(db, 'betaUsers');
                 const q = query(betaUsersRef, where('email', '==', user.email));
                 const snapshot = await getDocs(q);
@@ -422,13 +420,13 @@ useEffect(() => {
                   await deleteDoc(doc(db, 'betaUsers', snapshot.docs[0].id));
                 }
 
-                // Delete auth account
+                // Delete Firebase Auth account
                 await deleteUser(auth.currentUser);
 
-                alert('Account deleted successfully.');
+                alert('Account deleted successfully. Your contributions remain as community data.');
               } catch (error) {
                 console.error('Error deleting account:', error);
-                alert('Failed to delete account. Please try again or contact support.');
+                alert('Failed to delete account. Please try again or contact support.\n\nError: ' + error.message);
               }
             }}
           />
@@ -522,7 +520,7 @@ useEffect(() => {
             });
             
             try {
-              const savedStall = await saveStallToDb(newStall);
+              const savedStall = await saveStallToDb(newStall, user.email);
               console.log('Stall saved successfully:', savedStall);
               setStalls([savedStall, ...stalls]);
               setShowAddStall(false);
@@ -742,7 +740,7 @@ function StallDetail({ stall, onClose, savedStallIds, onToggleSave, currentUser,
   useEffect(() => {
     const loadRatings = async () => {
       if (currentUser) {
-        const rating = await getUserRating(stall.id, currentUser.uid);
+        const rating = await getUserRating(stall.id, currentUser.email);
         setUserRating(rating);
       }
 
@@ -1063,7 +1061,7 @@ function StallDetail({ stall, onClose, savedStallIds, onToggleSave, currentUser,
           onClose={() => setShowRatingModal(false)}
           onSubmit={async (rating) => {
             try {
-              await rateStall(stall.id, currentUser.uid, rating);
+              await rateStall(stall.id, currentUser.uid, currentUser.email, rating);
               setUserRating(rating);
               // Reload ratings
               const ratings = await getStallRatings(stall.id);
