@@ -10,8 +10,11 @@
 ## What Can You Do?
 
 ### 🗺️ **Explore**
-- Find chai stalls on an interactive map
+- Find chai stalls on an interactive map with smart clustering
+- Browse "Newly Added" stalls (last 30 days) or "Best in Area" (top-rated)
+- Adjust search radius from 1km to 100km
 - See 5-star ratings from the community
+- Get directions to any stall via Google Maps
 - Tap any stall to view photos, ratings, and details
 
 ### ➕ **Contribute**
@@ -45,9 +48,9 @@
 ---
 
 ## 🚧 Coming Soon
-- Explore feed with list view
-- Search & filter by location/rating
-- Report closed stalls
+- Content moderation tools
+- Report closed/incorrect stalls
+- Community verification system
 - Achievements & chai points
 
 ---
@@ -75,16 +78,18 @@ npm run dev
 ```
 
 ### Current Version
-**v0.5.0** (November 25, 2025)
+**v0.5.1** (November 25, 2025)
 Status: Private Beta
 
 ### Recent Major Updates
+- **Explore page** (Newly Added & Best in Area tabs with distance filtering)
+- **Map clustering** (progressive grouping, zoom-responsive badges)
 - **5-star rating system** (migrated from 3-tier Accha/Thik-Thak/Nahi)
 - **Account deletion** (GDPR-compliant with data anonymization)
 - **Email hash anti-gaming** (prevents rating manipulation)
 - **7-rating minimum threshold** (ensures quality aggregated ratings)
+- Enhanced marker visibility (vibrant colors, drop shadows, larger size)
 - Community rating aggregation (accurate averages from all users)
-- Draggable stall detail panels
 - Address search with autocomplete
 
 ### Known Technical Debt
