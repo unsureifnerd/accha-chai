@@ -382,7 +382,12 @@ useEffect(() => {
 
         {/* Explore Tab */}
         {activeTab === 'explore' && (
-          <ComingSoonScreen title="Explore" icon="🔍" />
+          <ExplorePage
+            stalls={stalls}
+            userLocation={userLocation}
+            onStallClick={setSelectedStall}
+            onSwitchToHome={() => setActiveTab('home')}
+          />
         )}
 
         {/* Profile Tab */}
@@ -2122,6 +2127,240 @@ function RatingModal({ stall, currentRating, onClose, onSubmit }) {
           >
             {currentRating ? 'Update Rating' : 'Submit Rating'}
           </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Explore Page Component
+function ExplorePage({ stalls, userLocation, onStallClick, onSwitchToHome }) {
+  const [activeSubTab, setActiveSubTab] = useState('newly-added');
+  const [range, setRange] = useState(10); // Default 10km
+
+  // Calculate distance between two points using Haversine formula
+  const calculateDistance = (lat1, lon1, lat2, lon2) => {
+    const R = 6371; // Earth's radius in km
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a =
+      Math.sin(dLat/2) * Math.sin(dLat/2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+      Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c;
+  };
+
+  // Filter and sort stalls based on active sub-tab
+  const getFilteredStalls = () => {
+    if (!userLocation) return [];
+
+    // Add distance to each stall
+    const stallsWithDistance = stalls.map(stall => ({
+      ...stall,
+      distance: calculateDistance(
+        userLocation.lat,
+        userLocation.lng,
+        stall.location.lat,
+        stall.location.lng
+      )
+    }));
+
+    // Filter by range
+    const stallsInRange = stallsWithDistance.filter(stall => stall.distance <= range);
+
+    if (activeSubTab === 'newly-added') {
+      // Last 30 days, sorted by distance
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+      return stallsInRange
+        .filter(stall => {
+          const createdAt = stall.createdAt?.toDate?.() || new Date(stall.createdAt);
+          return createdAt >= thirtyDaysAgo;
+        })
+        .sort((a, b) => a.distance - b.distance);
+    } else {
+      // Best in Area: has ratings, sorted by distance
+      return stallsInRange
+        .filter(stall => stall.averageRating && stall.ratingsCount >= 7)
+        .sort((a, b) => a.distance - b.distance);
+    }
+  };
+
+  const filteredStalls = getFilteredStalls();
+
+  // Format distance for display
+  const formatDistance = (km) => {
+    if (km < 1) return `${Math.round(km * 1000)}m`;
+    return `${km.toFixed(1)}km`;
+  };
+
+  // Open Google Maps
+  const openInGoogleMaps = (stall, e) => {
+    e.stopPropagation(); // Prevent card click
+    const url = `https://www.google.com/maps/dir/?api=1&destination=${stall.location.lat},${stall.location.lng}`;
+    window.open(url, '_blank');
+  };
+
+  // Handle card click - switch to home and open stall detail
+  const handleCardClick = (stall) => {
+    onSwitchToHome();
+    onStallClick(stall);
+  };
+
+  // Check if location is enabled
+  if (!userLocation) {
+    return (
+      <div className="h-full w-full flex flex-col items-center justify-center bg-gray-50 p-6">
+        <div className="text-center space-y-4 max-w-md">
+          <div className="text-6xl mb-4">📍</div>
+          <h2 className="text-2xl font-bold text-gray-900">Location Required</h2>
+          <p className="text-gray-600">
+            Please enable location permissions to explore chai stalls near you.
+          </p>
+          <button
+            onClick={() => {
+              alert('Please enable location in your browser settings:\n\n1. Click the lock icon in the address bar\n2. Allow location access\n3. Refresh the page');
+            }}
+            className="mt-4 px-6 py-3 bg-amber-600 text-white rounded-lg font-semibold hover:bg-amber-700 transition"
+          >
+            Enable Location
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="h-full w-full overflow-y-auto bg-gray-50">
+      <div className="max-w-2xl mx-auto pb-24">
+        {/* Header */}
+        <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
+          <div className="p-4">
+            <h2 className="text-2xl font-bold text-gray-900 mb-4">Explore</h2>
+
+            {/* Sub-tabs */}
+            <div className="flex gap-2 mb-4">
+              <button
+                onClick={() => setActiveSubTab('newly-added')}
+                className={`flex-1 py-2 px-4 rounded-lg font-medium transition ${
+                  activeSubTab === 'newly-added'
+                    ? 'bg-amber-600 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                Newly Added
+              </button>
+              <button
+                onClick={() => setActiveSubTab('best-in-area')}
+                className={`flex-1 py-2 px-4 rounded-lg font-medium transition ${
+                  activeSubTab === 'best-in-area'
+                    ? 'bg-amber-600 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                Best in Area
+              </button>
+            </div>
+
+            {/* Range Slider */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-medium text-gray-700">Range:</label>
+                <span className="text-sm font-bold text-amber-600">{range}km</span>
+              </div>
+              <input
+                type="range"
+                min="1"
+                max="100"
+                value={range}
+                onChange={(e) => setRange(Number(e.target.value))}
+                className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-amber-600"
+              />
+              <div className="flex justify-between text-xs text-gray-500">
+                <span>1km</span>
+                <span>25km</span>
+                <span>50km</span>
+                <span>100km</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Stall List */}
+        <div className="p-4 space-y-3">
+          {filteredStalls.length === 0 ? (
+            // Empty State
+            <div className="text-center py-12">
+              <div className="text-6xl mb-4">🔍</div>
+              <h3 className="text-xl font-bold text-gray-900 mb-2">
+                No stalls within {range}km
+              </h3>
+              <p className="text-gray-600 mb-4">
+                {activeSubTab === 'newly-added'
+                  ? 'No new stalls added in the last 30 days in this area.'
+                  : 'No highly-rated stalls found in this area.'}
+              </p>
+              <button
+                onClick={() => setRange(Math.min(100, range + 10))}
+                className="px-6 py-2 bg-amber-600 text-white rounded-lg font-semibold hover:bg-amber-700 transition"
+              >
+                Increase Range
+              </button>
+            </div>
+          ) : (
+            filteredStalls.map((stall) => (
+              <div
+                key={stall.id}
+                onClick={() => handleCardClick(stall)}
+                className="bg-white rounded-xl shadow-sm hover:shadow-md transition cursor-pointer overflow-hidden"
+              >
+                <div className="flex items-center gap-3 p-3">
+                  {/* Thumbnail */}
+                  <div className="w-16 h-16 flex-shrink-0 bg-gray-200 rounded-lg overflow-hidden">
+                    {stall.photoURL ? (
+                      <img
+                        src={stall.photoURL}
+                        alt={stall.name}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-2xl">
+                        ☕
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Stall Info */}
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-bold text-gray-900 truncate">{stall.name}</h3>
+                    <div className="flex items-center gap-2 text-sm text-gray-600 mt-1">
+                      <span>{formatDistance(stall.distance)}</span>
+                      {stall.averageRating && (
+                        <>
+                          <span>•</span>
+                          <div className="flex items-center gap-1">
+                            <Star size={14} className="fill-amber-400 text-amber-400" />
+                            <span className="font-medium">{stall.averageRating.toFixed(1)}</span>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Direction Button */}
+                  <button
+                    onClick={(e) => openInGoogleMaps(stall, e)}
+                    className="flex-shrink-0 w-10 h-10 bg-blue-600 hover:bg-blue-700 text-white rounded-lg flex items-center justify-center transition"
+                    title="Open in Google Maps"
+                  >
+                    <Navigation size={18} />
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
         </div>
       </div>
     </div>
