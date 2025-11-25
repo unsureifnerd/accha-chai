@@ -125,8 +125,8 @@ export default function Map({ stalls, userLocation, onStallClick }) {
                     ${fontSize > 0 ? `<text x="${size/2}" y="${size/2 + fontSize/3}" text-anchor="middle" font-size="${fontSize}" font-weight="bold" fill="white">${count}</text>` : ''}
                   </svg>
                 `)}`,
-                scaledSize: new window.google.maps.Size(size, size),
-                anchor: new window.google.maps.Point(size/2, size/2),
+                scaledSize: window.google?.maps ? new window.google.maps.Size(size, size) : undefined,
+                anchor: window.google?.maps ? new window.google.maps.Point(size/2, size/2) : undefined,
               },
               zIndex: 1000 + count, // Higher count = higher z-index
             });
@@ -267,8 +267,8 @@ export default function Map({ stalls, userLocation, onStallClick }) {
                   <text x="19" y="24" text-anchor="middle" font-size="18" fill="white">☕</text>
                 </svg>
               `)}`,
-              scaledSize: new window.google.maps.Size(38, 38),
-              anchor: new window.google.maps.Point(19, 19),
+              scaledSize: window.google?.maps ? new window.google.maps.Size(38, 38) : undefined,
+              anchor: window.google?.maps ? new window.google.maps.Point(19, 19) : undefined,
             }}
           />
         ))}
