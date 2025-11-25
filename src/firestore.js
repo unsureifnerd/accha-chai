@@ -7,13 +7,30 @@ const stallsCollection = collection(db, 'stalls');
 // Add a new stall
 export const addStall = async (stallData) => {
   try {
+    // Separate out the creator's rating before adding the stall
+    const { rating: creatorRating, addedBy, ...restData } = stallData;
+
+    // Add the stall document with initial aggregated rating
     const docRef = await addDoc(stallsCollection, {
-      ...stallData,
+      ...restData,
+      addedBy,
       createdAt: new Date(),
       verified: false,
-      ratingsCount: 0
+      ratingsCount: 1, // Creator's rating counts
+      averageRating: creatorRating // Initially just the creator's rating
     });
-    return { id: docRef.id, ...stallData };
+
+    // Save creator's rating to the subcollection
+    if (creatorRating && addedBy) {
+      const ratingRef = doc(db, 'stalls', docRef.id, 'ratings', addedBy);
+      await setDoc(ratingRef, {
+        rating: creatorRating,
+        userId: addedBy,
+        createdAt: new Date()
+      });
+    }
+
+    return { id: docRef.id, ...stallData, averageRating: creatorRating, ratingsCount: 1 };
   } catch (error) {
     console.error('Error adding stall:', error);
     throw error;
@@ -122,6 +139,48 @@ export async function getSavedStalls(userId) {
   }
 }
 
+// Calculate and update aggregated rating for a stall
+async function updateAggregatedRating(stallId) {
+  try {
+    // Get all ratings from subcollection
+    const ratingsCollection = collection(db, 'stalls', stallId, 'ratings');
+    const querySnapshot = await getDocs(ratingsCollection);
+
+    const ratings = [];
+    querySnapshot.forEach((doc) => {
+      ratings.push(doc.data().rating);
+    });
+
+    const ratingsCount = ratings.length;
+
+    if (ratingsCount === 0) {
+      // No ratings, set defaults
+      const stallRef = doc(db, 'stalls', stallId);
+      await updateDoc(stallRef, {
+        averageRating: 0,
+        ratingsCount: 0
+      });
+      return { averageRating: 0, ratingsCount: 0 };
+    }
+
+    // Calculate average rating
+    const sum = ratings.reduce((acc, rating) => acc + rating, 0);
+    const averageRating = sum / ratingsCount;
+
+    // Update the stall document
+    const stallRef = doc(db, 'stalls', stallId);
+    await updateDoc(stallRef, {
+      averageRating: Math.round(averageRating * 10) / 10, // Round to 1 decimal
+      ratingsCount
+    });
+
+    return { averageRating, ratingsCount };
+  } catch (error) {
+    console.error('Error updating aggregated rating:', error);
+    throw error;
+  }
+}
+
 // Submit or update a rating for a stall
 export async function rateStall(stallId, userId, rating) {
   try {
@@ -131,6 +190,10 @@ export async function rateStall(stallId, userId, rating) {
       userId,
       createdAt: new Date()
     });
+
+    // Recalculate and update aggregated rating
+    await updateAggregatedRating(stallId);
+
     return true;
   } catch (error) {
     console.error('Error rating stall:', error);

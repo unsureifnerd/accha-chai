@@ -825,19 +825,34 @@ function StallDetail({ stall, onClose, savedStallIds, onToggleSave, currentUser,
 
   // Calculate aggregate rating
   const ratingCounts = {
-    Accha: allRatings.filter(r => r.rating === 'Accha').length,
-    'Thik-Thak': allRatings.filter(r => r.rating === 'Thik-Thak').length,
-    Nahi: allRatings.filter(r => r.rating === 'Nahi').length
+    5: allRatings.filter(r => r.rating === 5).length,
+    4: allRatings.filter(r => r.rating === 4).length,
+    3: allRatings.filter(r => r.rating === 3).length,
+    2: allRatings.filter(r => r.rating === 2).length,
+    1: allRatings.filter(r => r.rating === 1).length
   };
 
   const totalRatings = allRatings.length;
+
+  // Use aggregated rating from database, or calculate if not available
+  const averageRating = stall.averageRating ||
+    (totalRatings > 0 ? allRatings.reduce((sum, r) => sum + r.rating, 0) / totalRatings : 0);
+
+  // Determine minimum rating threshold (e.g., need 7+ ratings to show calculated average)
+  const MIN_RATINGS_THRESHOLD = 7;
+  const hasEnoughRatings = totalRatings >= MIN_RATINGS_THRESHOLD;
   const isOwnStall = currentUser && stall.addedBy === currentUser.uid;
 
   const handleShare = async () => {
     const shareUrl = `${window.location.origin}?stall=${stall.id}`;
+    const ratingText = hasEnoughRatings
+      ? `${averageRating.toFixed(1)} stars`
+      : totalRatings > 0
+      ? `${totalRatings} ${totalRatings === 1 ? 'rating' : 'ratings'}`
+      : 'No ratings yet';
     const shareData = {
       title: `${stall.name} - Accha Chai`,
-      text: `Check out this chai stall: ${stall.name} (${stall.rating}!)`,
+      text: `Check out this chai stall: ${stall.name} (${ratingText})`,
       url: shareUrl
     };
 
@@ -941,53 +956,58 @@ function StallDetail({ stall, onClose, savedStallIds, onToggleSave, currentUser,
           <h3 className="font-bold text-xl text-gray-800">{stall.name}</h3>
         </div>
 
-        {/* Rating Badge */}
-        <div className="flex items-center gap-2">
-          <span className={`px-3 py-1 rounded-full text-white font-semibold ${
-            stall.rating === 'Accha' ? 'bg-green-500' :
-            stall.rating === 'Thik-Thak' ? 'bg-yellow-500' :
-            'bg-red-500'
-          }`}>
-            {stall.rating}!
-          </span>
-          <span className="text-gray-600 text-sm">
-            {totalRatings} {totalRatings === 1 ? 'rating' : 'ratings'}
-          </span>
+        {/* Star Rating Display */}
+        <div className="flex items-center gap-3">
+          {hasEnoughRatings ? (
+            <>
+              <div className="flex items-center gap-1">
+                <span className="text-3xl font-bold text-gray-800">
+                  {averageRating.toFixed(1)}
+                </span>
+                <div className="flex">
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <Star
+                      key={star}
+                      size={20}
+                      className={`${
+                        star <= Math.round(averageRating)
+                          ? 'fill-amber-400 text-amber-400'
+                          : 'text-gray-300'
+                      }`}
+                    />
+                  ))}
+                </div>
+              </div>
+              <span className="text-gray-600 text-sm">
+                ({totalRatings} {totalRatings === 1 ? 'rating' : 'ratings'})
+              </span>
+            </>
+          ) : (
+            <div className="flex items-center gap-2">
+              <span className="px-3 py-1 rounded-full bg-gray-200 text-gray-700 font-medium text-sm">
+                {totalRatings === 0 ? 'No ratings yet' : `${totalRatings} ${totalRatings === 1 ? 'rating' : 'ratings'} - Need ${MIN_RATINGS_THRESHOLD}+ to show average`}
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Rating Breakdown */}
         {totalRatings > 0 && (
           <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-medium text-gray-700 w-20">Accha:</span>
-              <div className="flex-1 bg-gray-200 rounded-full h-2">
-                <div
-                  className="bg-green-500 h-2 rounded-full"
-                  style={{ width: `${(ratingCounts.Accha / totalRatings) * 100}%` }}
-                ></div>
+            {[5, 4, 3, 2, 1].map((starLevel) => (
+              <div key={starLevel} className="flex items-center gap-2">
+                <span className="text-sm font-medium text-gray-700 w-16 flex items-center gap-1">
+                  {starLevel} <Star size={14} className="fill-amber-400 text-amber-400" />
+                </span>
+                <div className="flex-1 bg-gray-200 rounded-full h-2">
+                  <div
+                    className="bg-amber-400 h-2 rounded-full transition-all"
+                    style={{ width: `${(ratingCounts[starLevel] / totalRatings) * 100}%` }}
+                  ></div>
+                </div>
+                <span className="text-sm text-gray-600 w-8 text-right">{ratingCounts[starLevel]}</span>
               </div>
-              <span className="text-sm text-gray-600 w-8 text-right">{ratingCounts.Accha}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-medium text-gray-700 w-20">Thik-Thak:</span>
-              <div className="flex-1 bg-gray-200 rounded-full h-2">
-                <div
-                  className="bg-yellow-500 h-2 rounded-full"
-                  style={{ width: `${(ratingCounts['Thik-Thak'] / totalRatings) * 100}%` }}
-                ></div>
-              </div>
-              <span className="text-sm text-gray-600 w-8 text-right">{ratingCounts['Thik-Thak']}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-medium text-gray-700 w-20">Nahi:</span>
-              <div className="flex-1 bg-gray-200 rounded-full h-2">
-                <div
-                  className="bg-red-500 h-2 rounded-full"
-                  style={{ width: `${(ratingCounts.Nahi / totalRatings) * 100}%` }}
-                ></div>
-              </div>
-              <span className="text-sm text-gray-600 w-8 text-right">{ratingCounts.Nahi}</span>
-            </div>
+            ))}
           </div>
         )}
 
@@ -1067,7 +1087,7 @@ function StallDetail({ stall, onClose, savedStallIds, onToggleSave, currentUser,
 function AddStallModal({ userLocation, onClose, onSubmit }) {
   const [step, setStep] = useState('camera');
   const [photo, setPhoto] = useState(null);
-  const [rating, setRating] = useState('');
+  const [rating, setRating] = useState(0);
   const [description, setDescription] = useState('');
   const [name, setName] = useState('');
 
@@ -1235,27 +1255,36 @@ function AddStallModal({ userLocation, onClose, onSubmit }) {
 
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-3">
+                <label className="block text-sm font-medium text-gray-700 mb-3 text-center">
                   How was the chai?
                 </label>
-                <div className="grid grid-cols-3 gap-3">
-                  {['Accha', 'Thik-Thak', 'Nahi'].map((r) => (
+                <div className="flex justify-center gap-2 py-2">
+                  {[1, 2, 3, 4, 5].map((star) => (
                     <button
-                      key={r}
+                      key={star}
                       type="button"
-                      onClick={() => setRating(r)}
-                      className={`py-3 rounded-lg font-semibold transition ${
-                        rating === r
-                          ? r === 'Accha' ? 'bg-green-500 text-white' :
-                            r === 'Thik-Thak' ? 'bg-yellow-500 text-white' :
-                            'bg-red-500 text-white'
-                          : 'bg-gray-100 text-gray-700 active:bg-gray-200'
-                      }`}
+                      onClick={() => setRating(star)}
+                      className="p-1 transition-transform active:scale-110"
                     >
-                      {r}!
+                      <Star
+                        size={40}
+                        className={`transition-colors ${
+                          star <= rating
+                            ? 'fill-amber-400 text-amber-400'
+                            : 'text-gray-300'
+                        }`}
+                      />
                     </button>
                   ))}
                 </div>
+                <p className="text-center text-sm text-gray-600 mt-2">
+                  {rating === 0 ? 'Tap a star to rate' :
+                   rating === 1 ? '1 star - Poor' :
+                   rating === 2 ? '2 stars - Below Average' :
+                   rating === 3 ? '3 stars - Average' :
+                   rating === 4 ? '4 stars - Good' :
+                   '5 stars - Excellent!'}
+                </p>
               </div>
 
               <div>
@@ -2012,7 +2041,8 @@ function EditStallModal({ stall, onClose, onSave }) {
 
 // Rating Modal
 function RatingModal({ stall, currentRating, onClose, onSubmit }) {
-  const [selectedRating, setSelectedRating] = useState(currentRating || '');
+  const [selectedRating, setSelectedRating] = useState(currentRating || 0);
+  const [hoveredStar, setHoveredStar] = useState(0);
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 z-[60] flex items-center justify-center p-6">
@@ -2038,29 +2068,40 @@ function RatingModal({ stall, currentRating, onClose, onSubmit }) {
             </div>
           </div>
 
-          {/* Rating Options */}
+          {/* Star Rating */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-3">
+            <label className="block text-sm font-medium text-gray-700 mb-3 text-center">
               How was the chai?
             </label>
-            <div className="grid grid-cols-3 gap-3">
-              {['Accha', 'Thik-Thak', 'Nahi'].map((rating) => (
+            <div className="flex justify-center gap-2 py-4">
+              {[1, 2, 3, 4, 5].map((star) => (
                 <button
-                  key={rating}
+                  key={star}
                   type="button"
-                  onClick={() => setSelectedRating(rating)}
-                  className={`py-3 rounded-lg font-semibold transition ${
-                    selectedRating === rating
-                      ? rating === 'Accha' ? 'bg-green-500 text-white' :
-                        rating === 'Thik-Thak' ? 'bg-yellow-500 text-white' :
-                        'bg-red-500 text-white'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
+                  onClick={() => setSelectedRating(star)}
+                  onMouseEnter={() => setHoveredStar(star)}
+                  onMouseLeave={() => setHoveredStar(0)}
+                  className="p-1 transition-transform hover:scale-110"
                 >
-                  {rating}!
+                  <Star
+                    size={48}
+                    className={`transition-colors ${
+                      star <= (hoveredStar || selectedRating)
+                        ? 'fill-amber-400 text-amber-400'
+                        : 'text-gray-300'
+                    }`}
+                  />
                 </button>
               ))}
             </div>
+            <p className="text-center text-sm text-gray-600 mt-2">
+              {selectedRating === 0 ? 'Tap a star to rate' :
+               selectedRating === 1 ? '1 star - Poor' :
+               selectedRating === 2 ? '2 stars - Below Average' :
+               selectedRating === 3 ? '3 stars - Average' :
+               selectedRating === 4 ? '4 stars - Good' :
+               '5 stars - Excellent!'}
+            </p>
           </div>
 
           {/* Submit Button */}
@@ -2158,13 +2199,35 @@ function AddedStallsView({ stalls, onBack, onEditStall, onDeleteStall }) {
 
                     {/* Rating */}
                     <div className="flex items-center gap-2 mb-2">
-                      <span className={`px-2 py-1 rounded-full text-white text-sm font-semibold ${
-                        stall.rating === 'Accha' ? 'bg-green-500' :
-                        stall.rating === 'Thik-Thak' ? 'bg-yellow-500' :
-                        'bg-red-500'
-                      }`}>
-                        {stall.rating}!
-                      </span>
+                      <div className="flex items-center gap-1">
+                        {stall.averageRating ? (
+                          <>
+                            <span className="text-sm font-semibold text-gray-800">
+                              {stall.averageRating.toFixed(1)}
+                            </span>
+                            <div className="flex">
+                              {[1, 2, 3, 4, 5].map((star) => (
+                                <Star
+                                  key={star}
+                                  size={14}
+                                  className={`${
+                                    star <= Math.round(stall.averageRating)
+                                      ? 'fill-amber-400 text-amber-400'
+                                      : 'text-gray-300'
+                                  }`}
+                                />
+                              ))}
+                            </div>
+                            {stall.ratingsCount > 0 && (
+                              <span className="text-xs text-gray-500">
+                                ({stall.ratingsCount})
+                              </span>
+                            )}
+                          </>
+                        ) : (
+                          <span className="text-sm text-gray-500">No ratings yet</span>
+                        )}
+                      </div>
                       {isCommunityOwned && (
                         <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">
                           Community-owned
@@ -2277,13 +2340,35 @@ function SavedStallsView({ stalls, onBack }) {
 
                   {/* Rating */}
                   <div className="mb-2">
-                    <span className={`px-2 py-1 rounded-full text-white text-sm font-semibold ${
-                      stall.rating === 'Accha' ? 'bg-green-500' :
-                      stall.rating === 'Thik-Thak' ? 'bg-yellow-500' :
-                      'bg-red-500'
-                    }`}>
-                      {stall.rating}!
-                    </span>
+                    <div className="flex items-center gap-1">
+                      {stall.averageRating ? (
+                        <>
+                          <span className="text-sm font-semibold text-gray-800">
+                            {stall.averageRating.toFixed(1)}
+                          </span>
+                          <div className="flex">
+                            {[1, 2, 3, 4, 5].map((star) => (
+                              <Star
+                                key={star}
+                                size={14}
+                                className={`${
+                                  star <= Math.round(stall.averageRating)
+                                    ? 'fill-amber-400 text-amber-400'
+                                    : 'text-gray-300'
+                                }`}
+                              />
+                            ))}
+                          </div>
+                          {stall.ratingsCount > 0 && (
+                            <span className="text-xs text-gray-500">
+                              ({stall.ratingsCount})
+                            </span>
+                          )}
+                        </>
+                      ) : (
+                        <span className="text-sm text-gray-500">No ratings yet</span>
+                      )}
+                    </div>
                   </div>
 
                   {/* Description */}

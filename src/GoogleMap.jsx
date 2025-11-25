@@ -9,17 +9,28 @@ const mapContainerStyle = {
 // Load Places library
 const libraries = ['places'];
 
-// Helper function to get marker color
-const getMarkerColor = (rating) => {
-  switch (rating) {
-    case 'Accha':
-      return '#22c55e';
-    case 'Thik-Thak':
-      return '#eab308';
-    case 'Nahi':
-      return '#ef4444';
-    default:
-      return '#6b7280';
+// Helper function to get marker color based on average rating
+const getMarkerColor = (stall) => {
+  // Check if stall has enough ratings to show color
+  const MIN_RATINGS_THRESHOLD = 7;
+  const hasEnoughRatings = stall.ratingsCount >= MIN_RATINGS_THRESHOLD;
+
+  if (!hasEnoughRatings || !stall.averageRating) {
+    return '#6b7280'; // Gray for new/unrated stalls
+  }
+
+  const avgRating = stall.averageRating;
+
+  // Map star ratings to colors:
+  // 4-5 stars: Green (excellent/good)
+  // 3 stars: Yellow (average)
+  // 1-2 stars: Red (poor/below average)
+  if (avgRating >= 4) {
+    return '#22c55e'; // Green
+  } else if (avgRating >= 3) {
+    return '#eab308'; // Yellow
+  } else {
+    return '#ef4444'; // Red
   }
 };
 
@@ -146,7 +157,7 @@ export default function Map({ stalls, userLocation, onStallClick }) {
             icon={{
               url: `data:image/svg+xml,${encodeURIComponent(`
                 <svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
-                  <circle cx="16" cy="16" r="14" fill="${getMarkerColor(stall.rating)}" stroke="white" stroke-width="2"/>
+                  <circle cx="16" cy="16" r="14" fill="${getMarkerColor(stall)}" stroke="white" stroke-width="2"/>
                   <text x="16" y="20" text-anchor="middle" font-size="16" fill="white">☕</text>
                 </svg>
               `)}`,
