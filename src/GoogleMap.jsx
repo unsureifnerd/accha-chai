@@ -1,5 +1,6 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import { GoogleMap, LoadScript, Marker } from '@react-google-maps/api';
+import { MarkerClusterer } from '@googlemaps/markerclusterer';
 
 const mapContainerStyle = {
   width: '100%',
@@ -21,26 +22,91 @@ const getMarkerColor = (stall) => {
 
   const avgRating = stall.averageRating;
 
-  // Map star ratings to colors:
-  // 4-5 stars: Green (excellent/good)
-  // 3 stars: Yellow (average)
-  // 1-2 stars: Red (poor/below average)
+  // Map star ratings to colors (more vibrant for better visibility):
+  // 4-5 stars: Vibrant Green (excellent/good)
+  // 3 stars: Vibrant Yellow (average)
+  // 1-2 stars: Vibrant Red (poor/below average)
   if (avgRating >= 4) {
-    return '#22c55e'; // Green
+    return '#10b981'; // Vibrant green (emerald-500)
   } else if (avgRating >= 3) {
-    return '#eab308'; // Yellow
+    return '#f59e0b'; // Vibrant amber/yellow (amber-500)
   } else {
-    return '#ef4444'; // Red
+    return '#ef4444'; // Vibrant red (red-500)
   }
 };
 
 export default function Map({ stalls, userLocation, onStallClick }) {
   const mapRef = useRef(null);
   const locationButtonRef = useRef(null);
+  const clustererRef = useRef(null);
+  const markersRef = useRef([]);
+
+  // Update clusterer when stalls change
+  useEffect(() => {
+    if (clustererRef.current && markersRef.current.length > 0) {
+      // Clear old markers
+      clustererRef.current.clearMarkers();
+
+      // Add current markers
+      const markers = markersRef.current.map(({ marker }) => marker);
+      clustererRef.current.addMarkers(markers);
+    }
+  }, [stalls]);
+
+  // Clean up clusterer when component unmounts
+  useEffect(() => {
+    return () => {
+      if (clustererRef.current) {
+        clustererRef.current.clearMarkers();
+      }
+      markersRef.current = [];
+    };
+  }, []);
+
+  // Handle marker load - add to clusterer
+  const handleMarkerLoad = (marker, stall) => {
+    markersRef.current.push({ marker, stall });
+
+    // Add marker to clusterer if it exists
+    if (clustererRef.current) {
+      clustererRef.current.addMarker(marker);
+    }
+  };
 
   // Add custom control button when map is ready
   const handleMapLoad = (map) => {
     mapRef.current = map;
+
+    // Initialize marker clusterer with custom styling
+    if (!clustererRef.current) {
+      clustererRef.current = new MarkerClusterer({
+        map,
+        markers: [],
+        renderer: {
+          render: ({ count, position }) => {
+            // Custom cluster marker styling
+            return new window.google.maps.Marker({
+              position,
+              icon: {
+                url: `data:image/svg+xml,${encodeURIComponent(`
+                  <svg width="50" height="50" viewBox="0 0 50 50" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="25" cy="25" r="23" fill="#f97316" stroke="white" stroke-width="3"/>
+                    <text x="25" y="30" text-anchor="middle" font-size="16" font-weight="bold" fill="white">${count}</text>
+                  </svg>
+                `)}`,
+              },
+              label: {
+                text: '',
+                color: 'white',
+                fontSize: '14px',
+                fontWeight: 'bold',
+              },
+              zIndex: 1000,
+            });
+          },
+        },
+      });
+    }
 
     // Wait for map to be fully idle before adding button
     window.google.maps.event.addListenerOnce(map, 'idle', () => {
@@ -154,13 +220,21 @@ export default function Map({ stalls, userLocation, onStallClick }) {
             key={stall.id}
             position={stall.location}
             onClick={() => onStallClick(stall)}
+            onLoad={(marker) => handleMarkerLoad(marker, stall)}
             icon={{
               url: `data:image/svg+xml,${encodeURIComponent(`
-                <svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
-                  <circle cx="16" cy="16" r="14" fill="${getMarkerColor(stall)}" stroke="white" stroke-width="2"/>
-                  <text x="16" y="20" text-anchor="middle" font-size="16" fill="white">☕</text>
+                <svg width="38" height="38" viewBox="0 0 38 38" xmlns="http://www.w3.org/2000/svg">
+                  <defs>
+                    <filter id="shadow-${stall.id}" x="-50%" y="-50%" width="200%" height="200%">
+                      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.4"/>
+                    </filter>
+                  </defs>
+                  <circle cx="19" cy="19" r="16" fill="${getMarkerColor(stall)}" stroke="white" stroke-width="3" filter="url(#shadow-${stall.id})"/>
+                  <text x="19" y="24" text-anchor="middle" font-size="18" fill="white">☕</text>
                 </svg>
               `)}`,
+              scaledSize: new window.google.maps.Size(38, 38),
+              anchor: new window.google.maps.Point(19, 19),
             }}
           />
         ))}
