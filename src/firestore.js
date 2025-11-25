@@ -1,4 +1,4 @@
-import { collection, addDoc, getDocs, query, orderBy, limit, doc, updateDoc, deleteDoc, setDoc, getDoc, arrayUnion, arrayRemove, where } from 'firebase/firestore';
+import { collection, addDoc, getDocs, onSnapshot, query, orderBy, limit, doc, updateDoc, deleteDoc, setDoc, getDoc, arrayUnion, arrayRemove, where } from 'firebase/firestore';
 import { db } from './firebase';
 
 // Collection reference
@@ -49,22 +49,30 @@ export const addStall = async (stallData, userEmail) => {
   }
 };
 
-// Get all stalls
-export const getStalls = async () => {
+// Get all stalls with real-time updates
+export const subscribeToStalls = (callback) => {
   try {
     const q = query(stallsCollection, orderBy('createdAt', 'desc'), limit(100));
-    const querySnapshot = await getDocs(q);
-    const stalls = [];
-    querySnapshot.forEach((doc) => {
-      stalls.push({
-        id: doc.id,
-        ...doc.data()
+
+    // Set up real-time listener
+    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+      const stalls = [];
+      querySnapshot.forEach((doc) => {
+        stalls.push({
+          id: doc.id,
+          ...doc.data()
+        });
       });
+      callback(stalls);
+    }, (error) => {
+      console.error('Error listening to stalls:', error);
+      callback([]);
     });
-    return stalls;
+
+    return unsubscribe; // Return unsubscribe function for cleanup
   } catch (error) {
-    console.error('Error getting stalls:', error);
-    return [];
+    console.error('Error setting up stalls listener:', error);
+    return () => {}; // Return empty unsubscribe function
   }
 };
 

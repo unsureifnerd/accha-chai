@@ -40,82 +40,57 @@ export default function Map({ stalls, userLocation, onStallClick }) {
   const locationButtonRef = useRef(null);
   const clustererRef = useRef(null);
   const markersRef = useRef([]);
+  const [markersReady, setMarkersReady] = useState(0); // Counter to trigger clustering
 
-  // Update clusterer when stalls change
+  // Reset markers when stalls change
   useEffect(() => {
-    if (clustererRef.current && markersRef.current.length > 0) {
-      // Clear old markers
-      clustererRef.current.clearMarkers();
-
-      // Add current markers
-      const markers = markersRef.current.map(({ marker }) => marker);
-      clustererRef.current.addMarkers(markers);
-    }
+    markersRef.current = [];
   }, [stalls]);
 
-  // Clean up clusterer when component unmounts
+  // Update clusterer when stalls or markers change
   useEffect(() => {
-    return () => {
-      if (clustererRef.current) {
-        clustererRef.current.clearMarkers();
-      }
-      markersRef.current = [];
-    };
-  }, []);
+    // Wait for map and markers to be ready
+    if (!mapRef.current || markersRef.current.length === 0) return;
 
-  // Handle marker load - add to clusterer
-  const handleMarkerLoad = (marker, stall) => {
-    markersRef.current.push({ marker, stall });
+    // Only initialize when we have all markers (stalls.length)
+    if (markersRef.current.length < stalls.length) return;
 
-    // Add marker to clusterer if it exists
+    // Clear existing clusterer
     if (clustererRef.current) {
-      clustererRef.current.addMarker(marker);
+      clustererRef.current.clearMarkers();
     }
-  };
 
-  // Add custom control button when map is ready
-  const handleMapLoad = (map) => {
-    mapRef.current = map;
+    // Initialize or re-initialize clusterer with all current markers
+    const markers = markersRef.current.map(({ marker }) => marker);
 
-    // Initialize marker clusterer with custom styling
     if (!clustererRef.current) {
+      // Create new clusterer
       clustererRef.current = new MarkerClusterer({
-        map,
-        markers: [],
-        // More aggressive clustering - groups at all zoom levels
+        map: mapRef.current,
+        markers,
         algorithmOptions: {
-          maxZoom: 20, // Cluster at all zoom levels (even when zoomed in very close)
-          radius: 150, // Larger radius = more aggressive clustering
+          maxZoom: 20,
+          radius: 150,
         },
         renderer: {
-          render: ({ count, position, markers }) => {
-            // Get current zoom level
-            const zoom = map.getZoom();
-
-            // Scale badge size based on zoom level
-            // Far out (zoom 1-8): small dots
-            // Medium (zoom 9-12): medium badges
-            // Close (zoom 13+): larger badges
+          render: ({ count, position }) => {
+            const zoom = mapRef.current.getZoom();
             let size, fontSize, strokeWidth;
 
             if (zoom <= 8) {
-              // Far zoom - tiny dot
               size = 20;
-              fontSize = 0; // Hide text when very small
+              fontSize = 0;
               strokeWidth = 2;
             } else if (zoom <= 12) {
-              // Medium zoom - small badge
               size = 30;
               fontSize = 11;
               strokeWidth = 2;
             } else {
-              // Close zoom - normal badge
               size = 40;
               fontSize = 14;
               strokeWidth = 3;
             }
 
-            // Custom cluster marker styling
             return new window.google.maps.Marker({
               position,
               icon: {
@@ -128,19 +103,46 @@ export default function Map({ stalls, userLocation, onStallClick }) {
                 scaledSize: window.google?.maps ? new window.google.maps.Size(size, size) : undefined,
                 anchor: window.google?.maps ? new window.google.maps.Point(size/2, size/2) : undefined,
               },
-              zIndex: 1000 + count, // Higher count = higher z-index
+              zIndex: 1000 + count,
             });
           },
         },
       });
 
-      // Listen for zoom changes and re-render clusters
-      map.addListener('zoom_changed', () => {
+      // Listen for zoom changes
+      mapRef.current.addListener('zoom_changed', () => {
         if (clustererRef.current) {
           clustererRef.current.render();
         }
       });
+    } else {
+      // Just add markers to existing clusterer
+      clustererRef.current.addMarkers(markers);
     }
+  }, [stalls, markersReady]);
+
+  // Clean up clusterer when component unmounts
+  useEffect(() => {
+    return () => {
+      if (clustererRef.current) {
+        clustererRef.current.clearMarkers();
+      }
+      markersRef.current = [];
+    };
+  }, []);
+
+  // Handle marker load - just store reference
+  const handleMarkerLoad = (marker, stall) => {
+    if (!markersRef.current.find(m => m.stall.id === stall.id)) {
+      markersRef.current.push({ marker, stall });
+      // Trigger clustering update
+      setMarkersReady(prev => prev + 1);
+    }
+  };
+
+  // Add custom control button when map is ready
+  const handleMapLoad = (map) => {
+    mapRef.current = map;
 
     // Wait for map to be fully idle before adding button
     window.google.maps.event.addListenerOnce(map, 'idle', () => {

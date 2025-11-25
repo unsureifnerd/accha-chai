@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Camera, MapPin, Navigation, Star, Plus, X, LogOut, Phone, Share2, Search } from 'lucide-react';
 import GoogleMapComponent from './GoogleMap';
-import { addStall as saveStallToDb, getStalls, deleteStall, updateStall, saveStall, unsaveStall, getSavedStalls, rateStall, getStallRatings, getUserRating, trackUserActivity, getBetaUsers, deleteUserAccount } from './firestore';
+import { addStall as saveStallToDb, subscribeToStalls, deleteStall, updateStall, saveStall, unsaveStall, getSavedStalls, rateStall, getStallRatings, getUserRating, trackUserActivity, getBetaUsers, deleteUserAccount } from './firestore';
 import { auth, googleProvider } from './firebase';
 import { signInWithPopup, signOut, onAuthStateChanged, deleteUser, reauthenticateWithPopup } from 'firebase/auth';
 import { collection, query, where, getDocs, doc, updateDoc, deleteDoc } from 'firebase/firestore';
@@ -101,18 +101,14 @@ useEffect(() => {
     console.warn('Geolocation not supported by browser');
   }
 
-    // Load stalls from Firestore
-    loadStalls();
-  }, []);
+  // Set up real-time listener for stalls
+  const unsubscribe = subscribeToStalls((stallsData) => {
+    setStalls(stallsData);
+  });
 
-  const loadStalls = async () => {
-    try {
-      const stallsData = await getStalls();
-      setStalls(stallsData);
-    } catch (error) {
-      console.error('Error loading stalls:', error);
-    }
-  };
+  // Cleanup listener on unmount
+  return () => unsubscribe();
+}, []);
 
   // Handle deep linking from shared URLs
   useEffect(() => {
@@ -360,7 +356,6 @@ useEffect(() => {
               onClose={() => setSelectedStall(null)}
               savedStallIds={savedStallIds}
               currentUser={user}
-              onRatingUpdate={() => loadStalls()}
               onToggleSave={async (stallId) => {
                 const isSaved = savedStallIds.includes(stallId);
                 try {
