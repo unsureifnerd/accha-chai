@@ -409,29 +409,35 @@ useEffect(() => {
               }
 
               try {
-                // Re-authenticate user (required by Firebase for account deletion)
-                alert('For security, please sign in again to confirm account deletion.');
-                await reauthenticateWithPopup(auth.currentUser, googleProvider);
+                // Step 1: Re-authenticate (required by Firebase for account deletion)
+                try {
+                  await reauthenticateWithPopup(auth.currentUser, googleProvider);
+                } catch (reAuthError) {
+                  // Handle popup blocker specifically
+                  if (reAuthError.code === 'auth/popup-blocked') {
+                    alert('Popup blocked by your browser.\n\nPlease:\n1. Enable popups for this site\n2. Click the popup icon in your address bar\n3. Try deleting your account again');
+                    return;
+                  } else if (reAuthError.code === 'auth/popup-closed-by-user') {
+                    alert('Account deletion cancelled.');
+                    return;
+                  } else {
+                    throw reAuthError; // Re-throw other errors
+                  }
+                }
 
-                // Anonymize user data (ratings, stalls, user document)
+                // Step 2: Anonymize user data (ratings, stalls, user document)
                 await deleteUserAccount(user.uid, user.email);
 
                 // Note: betaUsers entry remains for admin records (not PII, GDPR compliant)
                 // Admin can manually remove if needed
 
-                // Delete Firebase Auth account
+                // Step 3: Delete Firebase Auth account
                 await deleteUser(auth.currentUser);
 
                 alert('Account deleted successfully. Your contributions remain as community data.');
               } catch (error) {
                 console.error('Error deleting account:', error);
-
-                // Handle specific errors
-                if (error.code === 'auth/popup-closed-by-user') {
-                  alert('Account deletion cancelled.');
-                } else {
-                  alert('Failed to delete account. Please try again or contact support.\n\nError: ' + error.message);
-                }
+                alert('Failed to delete account. Please try again or contact support.\n\nError: ' + error.message);
               }
             }}
           />
