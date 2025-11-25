@@ -3,7 +3,7 @@ import { Camera, MapPin, Navigation, Star, Plus, X, LogOut, Phone, Share2, Searc
 import GoogleMapComponent from './GoogleMap';
 import { addStall as saveStallToDb, getStalls, deleteStall, updateStall, saveStall, unsaveStall, getSavedStalls, rateStall, getStallRatings, getUserRating, trackUserActivity, getBetaUsers, deleteUserAccount } from './firestore';
 import { auth, googleProvider } from './firebase';
-import { signInWithPopup, signOut, onAuthStateChanged, deleteUser } from 'firebase/auth';
+import { signInWithPopup, signOut, onAuthStateChanged, deleteUser, reauthenticateWithPopup } from 'firebase/auth';
 import { collection, query, where, getDocs, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db } from './firebase';
 
@@ -409,6 +409,10 @@ useEffect(() => {
               }
 
               try {
+                // Re-authenticate user (required by Firebase for account deletion)
+                alert('For security, please sign in again to confirm account deletion.');
+                await reauthenticateWithPopup(auth.currentUser, googleProvider);
+
                 // Anonymize user data (ratings, stalls, user document)
                 await deleteUserAccount(user.uid, user.email);
 
@@ -421,7 +425,13 @@ useEffect(() => {
                 alert('Account deleted successfully. Your contributions remain as community data.');
               } catch (error) {
                 console.error('Error deleting account:', error);
-                alert('Failed to delete account. Please try again or contact support.\n\nError: ' + error.message);
+
+                // Handle specific errors
+                if (error.code === 'auth/popup-closed-by-user') {
+                  alert('Account deletion cancelled.');
+                } else {
+                  alert('Failed to delete account. Please try again or contact support.\n\nError: ' + error.message);
+                }
               }
             }}
           />
