@@ -11,7 +11,7 @@
 
 ### 🗺️ **Explore**
 - Find chai stalls on an interactive map
-- See ratings from the community (Accha! / Thik-Thak / Nahi)
+- See 5-star ratings from the community
 - Tap any stall to view photos, ratings, and details
 
 ### ➕ **Contribute**
@@ -75,15 +75,17 @@ npm run dev
 ```
 
 ### Current Version
-**v0.4.0** (November 20, 2025)
+**v0.5.0** (November 25, 2025)
 Status: Private Beta
 
 ### Recent Major Updates
+- **5-star rating system** (migrated from 3-tier Accha/Thik-Thak/Nahi)
+- **Account deletion** (GDPR-compliant with data anonymization)
+- **Email hash anti-gaming** (prevents rating manipulation)
+- **7-rating minimum threshold** (ensures quality aggregated ratings)
+- Community rating aggregation (accurate averages from all users)
 - Draggable stall detail panels
 - Address search with autocomplete
-- Fullscreen image viewer
-- Community rating breakdown
-- Profile management
 
 ### Known Technical Debt
 - Google Maps APIs using deprecated versions (via `@react-google-maps/api`)
